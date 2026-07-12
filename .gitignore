@@ -1,0 +1,58 @@
+# ===== Backend (Kotlin/Gradle) =====
+backend/.gradle/
+backend/build/
+backend/*/build/
+backend/out/
+backend/*.iml
+backend/.idea/
+
+# Gradle wrapper jar (will be generated)
+!backend/gradle/wrapper/gradle-wrapper.jar
+
+# ===== Frontend (Node/React) =====
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+frontend/*.tsbuildinfo
+
+# ===== Infrastructure =====
+infrastructure/docker/volumes/
+
+# ===== IDE =====
+.idea/
+*.iml
+*.iws
+.vscode/
+*.code-workspace
+!.vscode/settings.json
+!.vscode/launch.json
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# ===== Environment =====
+.env
+.env.local
+.env.*.local
+*.env
+
+# ===== Logs =====
+*.log
+logs/
+
+# ===== Secrets =====
+*.pem
+*.key
+*.p12
+*.jks
+
+# ===== Build artifacts =====
+*.jar
+*.war
+*.class
+*.zip
+*.tar.gz
