@@ -7,7 +7,9 @@ plugins {
 
 dependencies {
     implementation(libs.spring.boot.starter.data.jpa)
+    implementation(libs.spring.boot.starter.security)
     implementation(libs.spring.boot.starter.validation)
+    implementation(libs.spring.boot.starter.oauth2.resource.server)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.jackson.module.kotlin)
     implementation(libs.jackson.datatype.jsr310)
