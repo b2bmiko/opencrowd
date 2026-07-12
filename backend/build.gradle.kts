@@ -11,10 +11,6 @@ plugins {
 allprojects {
     group = "org.opencrowd"
     version = "0.1.0-SNAPSHOT"
-
-    repositories {
-        mavenCentral()
-    }
 }
 
 subprojects {
