@@ -13,8 +13,10 @@ const settings = {
   post_logout_redirect_uri: POST_LOGOUT_URI,
   response_type: 'code',
   scope: 'openid profile email',
-  automaticSilentRenew: true,
-  silent_redirect_uri: `${window.location.origin}/silent-renew.html`,
+  automaticSilentRenew: false,
+  // PKCE requires HTTPS (crypto.subtle). Disable for HTTP dev environment.
+  // Will be re-enabled in production with HTTPS.
+  disablePKCE: true,
   userStore: new WebStorageStateStore({ store: window.sessionStorage }),
 };
 
