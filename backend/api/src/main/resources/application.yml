@@ -17,8 +17,6 @@ spring:
       ddl-auto: none
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-        multi_tenancy: SCHEMA
         format_sql: true
     show-sql: false
     open-in-view: false
