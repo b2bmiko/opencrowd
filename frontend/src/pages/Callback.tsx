@@ -2,11 +2,18 @@ import { useEffect } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
 
 export function CallbackPage() {
-  const { handleCallback, error } = useAuthStore();
+  const { handleCallback, isAuthenticated, error } = useAuthStore();
 
   useEffect(() => {
     handleCallback();
   }, [handleCallback]);
+
+  // Redirect to home after successful auth
+  useEffect(() => {
+    if (isAuthenticated) {
+      window.location.href = '/';
+    }
+  }, [isAuthenticated]);
 
   if (error) {
     return (
