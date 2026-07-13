@@ -2,7 +2,6 @@ package org.opencrowd.api.dto
 
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
-import java.time.Instant
 import java.util.UUID
 
 data class CreateUserRequest(
@@ -42,7 +41,7 @@ data class UserResponse(
     val title: String?,
     val phone: String?,
     val avatarUrl: String?,
-    val lastLoginAt: Instant?,
-    val createdAt: Instant,
-    val updatedAt: Instant,
+    val lastLoginAt: String?,
+    val createdAt: String,
+    val updatedAt: String,
 )
