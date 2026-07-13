@@ -1,0 +1,203 @@
+{
+  "realm": "opencrowd",
+  "enabled": true,
+  "displayName": "OpenCrowd",
+  "displayNameHtml": "<b>OpenCrowd</b>",
+  "loginTheme": "keycloak",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      {
+        "name": "platform_admin",
+        "description": "Platform-wide administrator with access to all tenants"
+      },
+      {
+        "name": "tenant_admin",
+        "description": "Administrator for a specific tenant"
+      },
+      {
+        "name": "user",
+        "description": "Regular user within a tenant"
+      }
+    ],
+    "client": {
+      "opencrowd-backend": [
+        {
+          "name": "manage_users",
+          "description": "Create, update, delete users"
+        },
+        {
+          "name": "manage_groups",
+          "description": "Create, update, delete groups"
+        },
+        {
+          "name": "manage_roles",
+          "description": "Create, update, delete roles"
+        },
+        {
+          "name": "manage_connectors",
+          "description": "Register, configure, remove connectors"
+        },
+        {
+          "name": "view_audit",
+          "description": "View audit events"
+        }
+      ]
+    }
+  },
+  "clients": [
+    {
+      "clientId": "opencrowd-frontend",
+      "name": "OpenCrowd Frontend",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "rootUrl": "http://localhost:3000",
+      "baseUrl": "/",
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://dev.opencrowd.io:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://dev.opencrowd.io:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*##http://dev.opencrowd.io:3000/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "tenant_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "opencrowd-backend",
+      "name": "OpenCrowd Backend",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "secret": "opencrowd-backend-secret",
+      "protocolMappers": [
+        {
+          "name": "tenant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "tenant_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin@opencrowd.local",
+      "email": "admin@opencrowd.local",
+      "firstName": "Platform",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["platform_admin"],
+      "clientRoles": {
+        "opencrowd-backend": [
+          "manage_users",
+          "manage_groups",
+          "manage_roles",
+          "manage_connectors",
+          "view_audit"
+        ]
+      },
+      "attributes": {
+        "tenant_id": ["acme"]
+      }
+    },
+    {
+      "username": "tenant-admin@acme.local",
+      "email": "tenant-admin@acme.local",
+      "firstName": "Tenant",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["tenant_admin"],
+      "clientRoles": {
+        "opencrowd-backend": [
+          "manage_users",
+          "manage_groups",
+          "manage_roles",
+          "manage_connectors",
+          "view_audit"
+        ]
+      },
+      "attributes": {
+        "tenant_id": ["acme"]
+      }
+    },
+    {
+      "username": "user@acme.local",
+      "email": "user@acme.local",
+      "firstName": "Regular",
+      "lastName": "User",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "user",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["user"],
+      "clientRoles": {
+        "opencrowd-backend": ["view_audit"]
+      },
+      "attributes": {
+        "tenant_id": ["acme"]
+      }
+    }
+  ]
+}

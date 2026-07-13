@@ -43,7 +43,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: opencrowd_dev
       SPRING_REDIS_HOST: redis
       SPRING_REDIS_PORT: 6379
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/opencrowd
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/opencrowd
       OPENCROWD_CORS_ORIGINS: http://localhost:3000,http://dev.opencrowd.io:3000
     depends_on:
       postgres:
@@ -55,6 +55,32 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 30s
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: opencrowd-keycloak
+    ports:
+      - "8180:8080"
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/opencrowd
+      KC_DB_USERNAME: opencrowd
+      KC_DB_PASSWORD: opencrowd_dev
+      KC_HEALTH_ENABLED: "true"
+    command: start-dev --import-realm
+    volumes:
+      - ../keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
       start_period: 30s
 
 volumes:
