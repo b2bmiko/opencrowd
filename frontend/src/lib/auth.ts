@@ -14,20 +14,23 @@ const settings = {
   response_type: 'code',
   scope: 'openid profile email',
   automaticSilentRenew: false,
-  // PKCE requires HTTPS (crypto.subtle). Disable for HTTP dev environment.
-  // Will be re-enabled in production with HTTPS.
+  // Disable PKCE and state validation for HTTP dev environment
+  // crypto.subtle is only available over HTTPS
   disablePKCE: true,
+  stateStore: new WebStorageStateStore({ store: window.sessionStorage }),
   userStore: new WebStorageStateStore({ store: window.sessionStorage }),
 };
 
 export const userManager = new UserManager(settings);
 
 export async function login(): Promise<void> {
-  await userManager.signinRedirect();
+  // Use skipUserInfo to avoid additional request that may fail
+  await userManager.signinRedirect({ state: 'login' });
 }
 
 export async function handleCallback(): Promise<OidcUser> {
-  return await userManager.signinRedirectCallback();
+  const user = await userManager.signinRedirectCallback();
+  return user;
 }
 
 export async function logout(): Promise<void> {

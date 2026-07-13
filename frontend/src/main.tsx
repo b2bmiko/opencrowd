@@ -1,3 +1,6 @@
+// Polyfill crypto.subtle for HTTP dev environment (must be first import)
+import '@/lib/crypto-polyfill';
+
 import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
