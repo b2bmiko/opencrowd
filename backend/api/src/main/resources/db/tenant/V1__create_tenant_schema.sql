@@ -95,7 +95,7 @@ CREATE TABLE audit_events (
     action          VARCHAR(50) NOT NULL,
     details         JSONB DEFAULT '{}',
     correlation_id  VARCHAR(100),
-    ip_address      INET,
+    ip_address      VARCHAR(45),
     user_agent      TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
