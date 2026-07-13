@@ -4,7 +4,7 @@
   "displayName": "OpenCrowd",
   "displayNameHtml": "<b>OpenCrowd</b>",
   "loginTheme": "keycloak",
-  "sslRequired": "external",
+  "sslRequired": "none",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
