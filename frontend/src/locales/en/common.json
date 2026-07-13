@@ -1,0 +1,64 @@
+{
+  "app": {
+    "name": "OpenCrowd",
+    "tagline": "Identity & Access Governance for the Open Source World"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "applications": "Applications",
+    "identity": "Identity",
+    "accessMatrix": "Access Matrix",
+    "accessProfiles": "Access Profiles",
+    "requests": "Requests",
+    "audit": "Audit",
+    "reports": "Reports",
+    "settings": "Settings"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "Unified view of your governance landscape",
+    "users": "Users",
+    "groups": "Groups",
+    "connectedApps": "Connected Apps",
+    "governanceScore": "Governance Score",
+    "accessOverview": "Access Overview",
+    "applicationsHealth": "Applications Health",
+    "accessMatrix": "Unified Access Matrix",
+    "riskAlerts": "Risk Alerts",
+    "last30days": "Last 30 days"
+  },
+  "status": {
+    "active": "Active",
+    "disabled": "Disabled",
+    "locked": "Locked",
+    "pending": "Pending",
+    "offboarded": "Offboarded",
+    "healthy": "Healthy",
+    "warning": "Warning",
+    "unhealthy": "Unhealthy",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "error": "Error"
+  },
+  "actions": {
+    "create": "Create",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "import": "Import",
+    "sync": "Sync",
+    "refresh": "Refresh"
+  },
+  "common": {
+    "loading": "Loading...",
+    "noResults": "No results found",
+    "error": "An error occurred",
+    "confirm": "Are you sure?",
+    "yes": "Yes",
+    "no": "No"
+  }
+}
