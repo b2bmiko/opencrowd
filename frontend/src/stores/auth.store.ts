@@ -22,7 +22,9 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   initialize: async () => {
     try {
+      console.log('[Auth] Initializing...');
       const user = await getUser();
+      console.log('[Auth] getUser result:', user ? `found (${user.profile.preferred_username})` : 'null');
       set({
         user,
         isAuthenticated: !!user && !user.expired,
@@ -30,12 +32,12 @@ export const useAuthStore = create<AuthState>((set) => ({
         error: null,
       });
     } catch (error) {
-      console.error('Auth initialization error:', error);
+      console.error('[Auth] Initialize error:', error);
       set({
         user: null,
         isAuthenticated: false,
         isLoading: false,
-        error: null, // Don't show error on first load — no user is normal
+        error: null,
       });
     }
   },
@@ -43,9 +45,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async () => {
     try {
       await login();
-      // If we get here without redirect, something went wrong
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('[Auth] Login error:', error);
       set({ isLoading: false, error: 'Unable to connect to identity provider' });
     }
   },
@@ -55,7 +56,6 @@ export const useAuthStore = create<AuthState>((set) => ({
       await logout();
       set({ user: null, isAuthenticated: false });
     } catch (error) {
-      // Clear state even if Keycloak logout fails
       set({ user: null, isAuthenticated: false, error: 'Logout failed' });
     }
   },
@@ -63,13 +63,14 @@ export const useAuthStore = create<AuthState>((set) => ({
   handleCallback: async () => {
     try {
       set({ isLoading: true, error: null });
-      console.log('[Auth] Starting callback handling...');
+      console.log('[Auth] Starting token exchange...');
       const user = await handleCallback();
-      console.log('[Auth] Token exchange successful, user:', user.profile.preferred_username);
-      console.log('[Auth] Storing in sessionStorage...');
-      // Verify storage worked
-      const stored = sessionStorage.getItem('opencrowd_auth');
-      console.log('[Auth] SessionStorage after save:', stored ? 'OK' : 'FAILED');
+      console.log('[Auth] Token exchange SUCCESS:', user.profile.preferred_username);
+      
+      // Verify storage
+      const verified = sessionStorage.getItem('opencrowd_auth');
+      console.log('[Auth] SessionStorage verified:', verified ? 'STORED' : 'NOT STORED');
+      
       set({
         user,
         isAuthenticated: true,
@@ -77,7 +78,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         error: null,
       });
     } catch (error) {
-      console.error('[Auth] Callback failed:', error);
+      console.error('[Auth] Callback FAILED:', error);
       set({
         user: null,
         isAuthenticated: false,
