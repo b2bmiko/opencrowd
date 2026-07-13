@@ -1,0 +1,17 @@
+apiVersion: v2
+name: opencrowd
+description: Identity & Access Governance for the Open Source World
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - identity
+  - governance
+  - access-management
+  - iga
+home: https://opencrowd.io
+sources:
+  - https://github.com/b2bmiko/opencrowd
+maintainers:
+  - name: OpenCrowd
+    url: https://opencrowd.io
