@@ -63,7 +63,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   handleCallback: async () => {
     try {
       set({ isLoading: true, error: null });
+      console.log('[Auth] Starting callback handling...');
       const user = await handleCallback();
+      console.log('[Auth] Token exchange successful, user:', user.profile.preferred_username);
+      console.log('[Auth] Storing in sessionStorage...');
+      // Verify storage worked
+      const stored = sessionStorage.getItem('opencrowd_auth');
+      console.log('[Auth] SessionStorage after save:', stored ? 'OK' : 'FAILED');
       set({
         user,
         isAuthenticated: true,
@@ -71,11 +77,12 @@ export const useAuthStore = create<AuthState>((set) => ({
         error: null,
       });
     } catch (error) {
+      console.error('[Auth] Callback failed:', error);
       set({
         user: null,
         isAuthenticated: false,
         isLoading: false,
-        error: 'Authentication callback failed',
+        error: error instanceof Error ? error.message : 'Authentication callback failed',
       });
     }
   },
