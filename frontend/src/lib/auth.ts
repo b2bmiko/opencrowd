@@ -103,8 +103,8 @@ export async function handleCallback(): Promise<OidcUser> {
 
   sessionStorage.setItem(TOKEN_KEY, JSON.stringify(user));
 
-  // Clean URL
-  window.history.replaceState({}, '', '/');
+  // Clean URL — DON'T redirect here, let the component handle it
+  window.history.replaceState({}, '', '/callback');
 
   return user;
 }

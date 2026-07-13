@@ -5,13 +5,18 @@ export function CallbackPage() {
   const { handleCallback, isAuthenticated, error } = useAuthStore();
 
   useEffect(() => {
-    handleCallback();
+    // Only process callback if we have a code in the URL
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('code')) {
+      handleCallback();
+    }
   }, [handleCallback]);
 
   // Redirect to home after successful auth
   useEffect(() => {
     if (isAuthenticated) {
-      window.location.href = '/';
+      // Use replace so back button doesn't return to callback
+      window.location.replace('/');
     }
   }, [isAuthenticated]);
 
