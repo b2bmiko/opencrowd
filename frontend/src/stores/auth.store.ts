@@ -30,21 +30,23 @@ export const useAuthStore = create<AuthState>((set) => ({
         error: null,
       });
     } catch (error) {
+      console.error('Auth initialization error:', error);
       set({
         user: null,
         isAuthenticated: false,
         isLoading: false,
-        error: 'Failed to initialize auth',
+        error: null, // Don't show error on first load — no user is normal
       });
     }
   },
 
   login: async () => {
     try {
-      set({ isLoading: true, error: null });
       await login();
+      // If we get here without redirect, something went wrong
     } catch (error) {
-      set({ isLoading: false, error: 'Login failed' });
+      console.error('Login error:', error);
+      set({ isLoading: false, error: 'Unable to connect to identity provider' });
     }
   },
 
