@@ -2,6 +2,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { MainLayout } from '@/components/layout/MainLayout';
+import { DashboardPage } from '@/pages/Dashboard';
 import './globals.css';
 
 const queryClient = new QueryClient({
@@ -15,18 +17,13 @@ const queryClient = new QueryClient({
 });
 
 function App() {
+  // Simple routing for now — will be replaced by TanStack Router in next task
+  const path = window.location.pathname;
+
   return (
-    <div className="flex h-full items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-primary">OpenCrowd</h1>
-        <p className="mt-2 text-muted-foreground">
-          Identity & Access Governance for the Open Source World
-        </p>
-        <p className="mt-4 text-sm text-muted-foreground">
-          Frontend scaffold initialized. Routing and layout coming next.
-        </p>
-      </div>
-    </div>
+    <MainLayout title="Dashboard" subtitle="Unified view of your governance landscape" currentPath={path}>
+      <DashboardPage />
+    </MainLayout>
   );
 }
 
