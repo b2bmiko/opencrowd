@@ -11,7 +11,7 @@ export const apiClient = axios.create({
 
 // Request interceptor: inject auth token
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const stored = sessionStorage.getItem('opencrowd_auth');
+  const stored = localStorage.getItem('opencrowd_auth');
   if (stored) {
     const user = JSON.parse(stored);
     if (user.access_token) {
@@ -27,7 +27,7 @@ apiClient.interceptors.response.use(
   (error: AxiosError<ApiErrorResponse>) => {
     if (error.response?.status === 401) {
       // Token expired or invalid — redirect to login
-      sessionStorage.removeItem('opencrowd_auth');
+      localStorage.removeItem('opencrowd_auth');
       window.location.href = '/';
     }
     return Promise.reject(transformError(error));

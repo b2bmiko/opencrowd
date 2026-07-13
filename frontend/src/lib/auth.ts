@@ -34,7 +34,7 @@ const TOKEN_KEY = 'opencrowd_auth';
 
 export async function login(): Promise<void> {
   const state = Math.random().toString(36).substring(2);
-  sessionStorage.setItem('auth_state', state);
+  localStorage.setItem('auth_state', state);
 
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -51,7 +51,7 @@ export async function handleCallback(): Promise<OidcUser> {
   const params = new URLSearchParams(window.location.search);
   const code = params.get('code');
   const state = params.get('state');
-  const storedState = sessionStorage.getItem('auth_state');
+  const storedState = localStorage.getItem('auth_state');
 
   if (!code) {
     throw new Error('No authorization code received');
@@ -61,7 +61,7 @@ export async function handleCallback(): Promise<OidcUser> {
     throw new Error('State mismatch — possible CSRF attack');
   }
 
-  sessionStorage.removeItem('auth_state');
+  localStorage.removeItem('auth_state');
 
   // Exchange code for tokens
   const tokenResponse = await fetch(TOKEN_ENDPOINT, {
@@ -101,14 +101,14 @@ export async function handleCallback(): Promise<OidcUser> {
     },
   };
 
-  sessionStorage.setItem(TOKEN_KEY, JSON.stringify(user));
+  localStorage.setItem(TOKEN_KEY, JSON.stringify(user));
 
   return user;
 }
 
 export async function logout(): Promise<void> {
-  const stored = sessionStorage.getItem(TOKEN_KEY);
-  sessionStorage.removeItem(TOKEN_KEY);
+  const stored = localStorage.getItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_KEY);
 
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -126,14 +126,14 @@ export async function logout(): Promise<void> {
 }
 
 export async function getUser(): Promise<OidcUser | null> {
-  const stored = sessionStorage.getItem(TOKEN_KEY);
+  const stored = localStorage.getItem(TOKEN_KEY);
   if (!stored) return null;
 
   const user: OidcUser = JSON.parse(stored);
   user.expired = Date.now() > user.expires_at;
 
   if (user.expired) {
-    sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
     return null;
   }
 
