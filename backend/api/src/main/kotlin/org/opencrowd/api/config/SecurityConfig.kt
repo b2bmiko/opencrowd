@@ -1,13 +1,13 @@
 package org.opencrowd.api.config
 
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.context.annotation.Profile
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter
 import org.springframework.security.web.SecurityFilterChain
 
 @Configuration
@@ -15,11 +15,7 @@ import org.springframework.security.web.SecurityFilterChain
 @EnableMethodSecurity(prePostEnabled = true)
 class SecurityConfig {
 
-    /**
-     * Production security config — requires valid JWT from Keycloak.
-     */
     @Bean
-    @Profile("!dev")
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http
             .csrf { it.disable() }
@@ -32,30 +28,26 @@ class SecurityConfig {
                     .anyRequest().authenticated()
             }
             .oauth2ResourceServer { oauth2 ->
-                oauth2.jwt { }
+                oauth2.jwt { jwt ->
+                    jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())
+                }
             }
 
         return http.build()
     }
 
     /**
-     * Development security config — allows all requests without JWT.
-     * This lets the app start without Keycloak running.
+     * Converts Keycloak JWT claims into Spring Security authorities.
+     * Maps both realm_access.roles and resource_access.opencrowd-backend.roles.
      */
     @Bean
-    @Profile("dev")
-    fun devSecurityFilterChain(http: HttpSecurity): SecurityFilterChain {
-        http
-            .csrf { it.disable() }
-            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
-            .authorizeHttpRequests { auth ->
-                auth
-                    .requestMatchers("/api/v1/health", "/api/v1/info").permitAll()
-                    .requestMatchers("/actuator/**").permitAll()
-                    .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
-                    .anyRequest().permitAll()
-            }
+    fun jwtAuthenticationConverter(): JwtAuthenticationConverter {
+        val grantedAuthoritiesConverter = JwtGrantedAuthoritiesConverter()
+        grantedAuthoritiesConverter.setAuthorityPrefix("ROLE_")
+        grantedAuthoritiesConverter.setAuthoritiesClaimName("realm_access.roles")
 
-        return http.build()
+        val converter = JwtAuthenticationConverter()
+        converter.setJwtGrantedAuthoritiesConverter(KeycloakRoleConverter())
+        return converter
     }
 }

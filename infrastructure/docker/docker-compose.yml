@@ -41,7 +41,8 @@ services:
       SPRING_DATASOURCE_PASSWORD: opencrowd_dev
       SPRING_REDIS_HOST: redis
       SPRING_REDIS_PORT: 6379
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/opencrowd
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://dev.opencrowd.io:8180/realms/opencrowd
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/opencrowd/protocol/openid-connect/certs
       OPENCROWD_CORS_ORIGINS: http://localhost:3000,http://dev.opencrowd.io:3000
     depends_on:
       postgres:

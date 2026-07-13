@@ -11,9 +11,13 @@ export const apiClient = axios.create({
 
 // Request interceptor: inject auth token
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  // Token injection will be added after auth integration (Task 12)
-  // const token = useAuthStore.getState().accessToken;
-  // if (token) config.headers.Authorization = `Bearer ${token}`;
+  const stored = sessionStorage.getItem('opencrowd_auth');
+  if (stored) {
+    const user = JSON.parse(stored);
+    if (user.access_token) {
+      config.headers.Authorization = `Bearer ${user.access_token}`;
+    }
+  }
   return config;
 });
 
@@ -22,8 +26,9 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError<ApiErrorResponse>) => {
     if (error.response?.status === 401) {
-      // Will trigger re-auth after Task 12
-      console.warn('Unauthorized — auth integration pending');
+      // Token expired or invalid — redirect to login
+      sessionStorage.removeItem('opencrowd_auth');
+      window.location.href = '/';
     }
     return Promise.reject(transformError(error));
   },
