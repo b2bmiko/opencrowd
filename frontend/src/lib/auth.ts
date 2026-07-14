@@ -57,7 +57,8 @@ export async function handleCallback(): Promise<OidcUser> {
     throw new Error('No authorization code received');
   }
 
-  if (state !== storedState) {
+  // Validate state only if we set one (skip for SSO auto-redirects)
+  if (storedState && state !== storedState) {
     throw new Error('State mismatch — possible CSRF attack');
   }
 
