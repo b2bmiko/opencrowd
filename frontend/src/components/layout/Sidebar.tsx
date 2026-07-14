@@ -21,6 +21,7 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/' },
   { label: 'Applications', icon: Network, href: '/applications' },
   { label: 'Identity', icon: Users, href: '/identity' },
+  { label: 'Groups', icon: Group, href: '/groups' },
   { label: 'Access Matrix', icon: Shield, href: '/access-matrix' },
   { label: 'Access Profiles', icon: FileCheck, href: '/access-profiles' },
   { label: 'Requests', icon: ClipboardList, href: '/requests' },

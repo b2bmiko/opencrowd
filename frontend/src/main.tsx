@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { DashboardPage } from '@/pages/Dashboard';
 import { IdentityPage } from '@/pages/Identity';
+import { GroupsPage } from '@/pages/Groups';
 import { LoginPage } from '@/pages/Login';
 import { CallbackPage } from '@/pages/Callback';
 import './globals.css';
@@ -54,6 +55,8 @@ function AppRouter() {
     switch (path) {
       case '/identity':
         return { title: 'Identity', subtitle: 'Manage user identities', component: <IdentityPage /> };
+      case '/groups':
+        return { title: 'Groups', subtitle: 'Organize users into groups', component: <GroupsPage /> };
       default:
         return { title: 'Dashboard', subtitle: 'Unified view of your governance landscape', component: <DashboardPage /> };
     }
