@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useAuth } from '@/hooks/use-auth';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { DashboardPage } from '@/pages/Dashboard';
+import { IdentityPage } from '@/pages/Identity';
 import { LoginPage } from '@/pages/Login';
 import { CallbackPage } from '@/pages/Callback';
 import './globals.css';
@@ -49,13 +50,20 @@ function AppRouter() {
   }
 
   // Authenticated — show app
+  const getPageContent = () => {
+    switch (path) {
+      case '/identity':
+        return { title: 'Identity', subtitle: 'Manage user identities', component: <IdentityPage /> };
+      default:
+        return { title: 'Dashboard', subtitle: 'Unified view of your governance landscape', component: <DashboardPage /> };
+    }
+  };
+
+  const { title, subtitle, component } = getPageContent();
+
   return (
-    <MainLayout
-      title="Dashboard"
-      subtitle="Unified view of your governance landscape"
-      currentPath={path}
-    >
-      <DashboardPage />
+    <MainLayout title={title} subtitle={subtitle} currentPath={path}>
+      {component}
     </MainLayout>
   );
 }
