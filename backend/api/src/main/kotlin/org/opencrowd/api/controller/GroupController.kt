@@ -132,7 +132,7 @@ class GroupController(
         type = type.name,
         parentId = parentId,
         ownerId = ownerId,
-        memberCount = members.size,
+        memberCount = try { members.size } catch (_: Exception) { 0 },
         createdAt = createdAt.toString(),
         updatedAt = updatedAt.toString(),
     )
