@@ -1,7 +1,6 @@
 package org.opencrowd.api.dto
 
 import jakarta.validation.constraints.NotBlank
-import java.time.Instant
 import java.util.UUID
 
 data class CreateGroupRequest(
@@ -28,6 +27,6 @@ data class GroupResponse(
     val parentId: UUID?,
     val ownerId: UUID?,
     val memberCount: Int,
-    val createdAt: Instant,
-    val updatedAt: Instant,
+    val createdAt: String,
+    val updatedAt: String,
 )
