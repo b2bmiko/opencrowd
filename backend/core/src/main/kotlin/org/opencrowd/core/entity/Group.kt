@@ -8,8 +8,9 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.JoinTable
 import jakarta.persistence.ManyToMany
-import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import org.hibernate.annotations.JdbcTypeCode
+import org.hibernate.type.SqlTypes
 import java.util.UUID
 
 @Entity
@@ -32,7 +33,8 @@ class Group(
     @Column(name = "owner_id")
     var ownerId: UUID? = null,
 
-    @Column(name = "dynamic_filter", columnDefinition = "JSONB")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "dynamic_filter", columnDefinition = "jsonb")
     var dynamicFilter: String? = null,
 
     @ManyToMany(fetch = FetchType.LAZY)

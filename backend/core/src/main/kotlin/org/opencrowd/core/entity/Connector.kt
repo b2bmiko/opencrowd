@@ -5,6 +5,8 @@ import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
 import jakarta.persistence.Enumerated
 import jakarta.persistence.Table
+import org.hibernate.annotations.JdbcTypeCode
+import org.hibernate.type.SqlTypes
 import java.time.Instant
 
 @Entity
@@ -21,7 +23,8 @@ class Connector(
     @Column(name = "status", nullable = false)
     var status: ConnectorStatus = ConnectorStatus.DISCONNECTED,
 
-    @Column(name = "config", columnDefinition = "JSONB", nullable = false)
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "config", columnDefinition = "jsonb", nullable = false)
     var config: String = "{}",
 
     @Column(name = "last_sync_at")
