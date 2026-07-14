@@ -1,7 +1,6 @@
 package org.opencrowd.api.dto
 
 import jakarta.validation.constraints.NotBlank
-import java.time.Instant
 import java.util.UUID
 
 data class CreateConnectorRequest(
@@ -21,9 +20,9 @@ data class ConnectorResponse(
     val name: String,
     val status: String,
     val healthStatus: String?,
-    val lastSyncAt: Instant?,
-    val lastHealthAt: Instant?,
+    val lastSyncAt: String?,
+    val lastHealthAt: String?,
     val syncSchedule: String?,
-    val createdAt: Instant,
-    val updatedAt: Instant,
+    val createdAt: String,
+    val updatedAt: String,
 )
