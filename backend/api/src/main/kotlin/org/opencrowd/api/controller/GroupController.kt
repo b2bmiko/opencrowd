@@ -30,6 +30,7 @@ import java.util.UUID
 @Tag(name = "Groups", description = "Group management")
 class GroupController(
     private val groupService: GroupService,
+    private val groupRepository: org.opencrowd.core.repository.GroupRepository,
 ) {
 
     @GetMapping
@@ -132,7 +133,7 @@ class GroupController(
         type = type.name,
         parentId = parentId,
         ownerId = ownerId,
-        memberCount = try { members.size } catch (_: Exception) { 0 },
+        memberCount = groupRepository.countMembers(id!!).toInt(),
         createdAt = createdAt.toString(),
         updatedAt = updatedAt.toString(),
     )

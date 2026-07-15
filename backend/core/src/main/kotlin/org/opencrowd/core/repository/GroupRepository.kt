@@ -18,4 +18,7 @@ interface GroupRepository : JpaRepository<Group, UUID> {
     fun findByParentId(parentId: UUID, pageable: Pageable): Page<Group>
 
     fun findByOwnerId(ownerId: UUID): List<Group>
+
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(gm) FROM Group g JOIN g.members gm WHERE g.id = :groupId")
+    fun countMembers(groupId: UUID): Long
 }
