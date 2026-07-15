@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">OpenCrowd site icon</title>
+  <desc id="desc">A circular open identity governance hub mark with connected nodes and a keyhole center.</desc>
+  <g fill="none" stroke-width="42" stroke-linecap="round">
+    <path d="M111 151a178 178 0 0 1 103-72" stroke="#7C3AED"/>
+    <path d="M298 79a178 178 0 0 1 103 72" stroke="#2E90FA"/>
+    <path d="M401 361a178 178 0 0 1-103 72" stroke="#20A39E"/>
+    <path d="M214 433a178 178 0 0 1-103-72" stroke="#7C3AED"/>
+  </g>
+  <g fill="none" stroke="#173B63" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M256 104v96"/>
+    <path d="M256 312v96"/>
+    <path d="M104 256h96"/>
+    <path d="M312 256h96"/>
+    <path d="M171 366l67-67"/>
+    <path d="M341 366l-67-67"/>
+  </g>
+  <circle cx="256" cy="256" r="90" fill="#173B63"/>
+  <circle cx="256" cy="232" r="30" fill="#FFFFFF"/>
+  <path d="M242 258h28l31 83h-90z" fill="#FFFFFF"/>
+  <g>
+    <circle cx="256" cy="70" r="33" fill="#2E90FA"/>
+    <circle cx="442" cy="256" r="33" fill="#16A34A"/>
+    <circle cx="256" cy="442" r="33" fill="#2E90FA"/>
+    <circle cx="70" cy="256" r="33" fill="#7C3AED"/>
+    <circle cx="133" cy="385" r="33" fill="#7C3AED"/>
+  </g>
+</svg>

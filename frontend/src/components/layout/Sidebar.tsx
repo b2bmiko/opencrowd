@@ -38,20 +38,19 @@ export function Sidebar({ currentPath }: SidebarProps) {
   return (
     <aside className="flex h-full w-64 flex-col bg-sidebar text-sidebar-foreground">
       {/* Logo */}
-      <div className="flex h-20 items-center gap-3 px-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-6 w-6 text-primary-foreground">
-            <circle cx="12" cy="12" r="3" />
-            <circle cx="12" cy="12" r="8" strokeDasharray="4 2" />
-            <line x1="12" y1="2" x2="12" y2="4" />
-            <line x1="12" y1="20" x2="12" y2="22" />
-            <line x1="2" y1="12" x2="4" y2="12" />
-            <line x1="20" y1="12" x2="22" y2="12" />
-          </svg>
+      <div className="flex min-h-24 items-center gap-3 px-4 py-5">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm ring-1 ring-white/10">
+          <img src="/logo-icon.svg" alt="" className="h-full w-full object-contain" />
         </div>
-        <div className="flex flex-col">
-          <span className="text-lg font-bold leading-tight text-sidebar-foreground">OpenCrowd</span>
-          <span className="text-[11px] font-semibold leading-tight text-sidebar-foreground/50" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>Open Identity & Access Governance Hub</span>
+        <div className="min-w-0">
+          <span className="block text-[22px] font-extrabold leading-none tracking-[-0.02em] text-sidebar-foreground">
+            OpenCrowd
+          </span>
+          <span className="mt-1.5 block text-[10.5px] font-semibold leading-snug tracking-[0.01em] text-sidebar-foreground/70">
+            Open Identity &amp; Access
+            <br />
+            Governance Hub
+          </span>
         </div>
       </div>
 
