@@ -64,6 +64,56 @@ class XWikiClient(
     }
 
     /**
+     * Create a user in xWiki.
+     * Creates the user page and sets the XWikiUsers object with properties.
+     */
+    fun createUser(username: String, email: String, firstName: String?, lastName: String?, password: String?): Boolean {
+        return try {
+            // Step 1: Create user page content
+            val content = """
+                {{include reference="XWiki.XWikiUserSheet"/}}
+            """.trimIndent()
+
+            val pageXml = """
+                <page xmlns="http://www.xwiki.org">
+                    <title>$username</title>
+                    <content>$content</content>
+                </page>
+            """.trimIndent()
+
+            val pageResponse = put("/rest/wikis/xwiki/spaces/XWiki/pages/$username", pageXml)
+            if (pageResponse.statusCode() !in 200..299) {
+                logger.error("Failed to create xWiki user page: HTTP ${pageResponse.statusCode()}")
+                return false
+            }
+
+            // Step 2: Create XWikiUsers object with properties
+            val propsXml = buildString {
+                append("""<object xmlns="http://www.xwiki.org">""")
+                append("<className>XWiki.XWikiUsers</className>")
+                append("<property><email>$email</email></property>")
+                if (firstName != null) append("<property><first_name>$firstName</first_name></property>")
+                if (lastName != null) append("<property><last_name>$lastName</last_name></property>")
+                if (password != null) append("<property><password>$password</password></property>")
+                append("<property><active>1</active></property>")
+                append("</object>")
+            }
+
+            val objResponse = post("/rest/wikis/xwiki/spaces/XWiki/pages/$username/objects", propsXml)
+            if (objResponse.statusCode() !in 200..299) {
+                logger.error("Failed to create xWiki user object: HTTP ${objResponse.statusCode()}")
+                return false
+            }
+
+            logger.info("Created user in xWiki: $username")
+            true
+        } catch (e: Exception) {
+            logger.error("Failed to create user in xWiki: ${e.message}")
+            false
+        }
+    }
+
+    /**
      * Fetch all users from xWiki.
      */
     fun getUsers(wiki: String = "xwiki"): List<XWikiUser> {
@@ -132,6 +182,34 @@ class XWikiClient(
             .header("Accept", "application/xml")
             .timeout(Duration.ofSeconds(30))
             .GET()
+            .build()
+
+        return httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+    }
+
+    private fun put(path: String, xmlBody: String): HttpResponse<String> {
+        val url = if (path.startsWith("http")) path else "$baseUrl$path"
+        val request = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("Authorization", authHeader)
+            .header("Content-Type", "application/xml")
+            .header("Accept", "application/xml")
+            .timeout(Duration.ofSeconds(30))
+            .PUT(HttpRequest.BodyPublishers.ofString(xmlBody))
+            .build()
+
+        return httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+    }
+
+    private fun post(path: String, xmlBody: String): HttpResponse<String> {
+        val url = if (path.startsWith("http")) path else "$baseUrl$path"
+        val request = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("Authorization", authHeader)
+            .header("Content-Type", "application/xml")
+            .header("Accept", "application/xml")
+            .timeout(Duration.ofSeconds(30))
+            .POST(HttpRequest.BodyPublishers.ofString(xmlBody))
             .build()
 
         return httpClient.send(request, HttpResponse.BodyHandlers.ofString())

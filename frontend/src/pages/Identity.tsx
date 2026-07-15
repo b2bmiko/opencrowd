@@ -163,7 +163,7 @@ function UserRow({ user }: { user: User }) {
   const displayName = user.displayName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
 
   return (
-    <tr className="hover:bg-muted/30">
+    <tr className="cursor-pointer hover:bg-muted/30" onClick={() => window.location.href = `/identity/${user.id}`}>
       <td className="px-4 py-3">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">

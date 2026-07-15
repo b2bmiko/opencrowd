@@ -108,6 +108,52 @@ class ConnectorSyncController(
         ))
     }
 
+    @PostMapping("/{id}/provision-user")
+    @Operation(summary = "Provision user to app", description = "Creates a user in the connected application from OpenCrowd")
+    @PreAuthorize("hasRole('manage_connectors')")
+    fun provisionUser(
+        @PathVariable id: UUID,
+        @RequestBody body: Map<String, String>
+    ): ResponseEntity<Map<String, Any>> {
+        val dbConnector = connectorService.findById(id)
+            ?: return ResponseEntity.notFound().build()
+
+        val baseUrl = body["baseUrl"] ?: throw IllegalArgumentException("Missing baseUrl")
+        val connUsername = body["username"] ?: throw IllegalArgumentException("Missing username")
+        val connPassword = body["password"] ?: throw IllegalArgumentException("Missing password")
+        val targetUserId = body["userId"] ?: throw IllegalArgumentException("Missing userId")
+
+        // Get the user from OpenCrowd
+        val user = userService.findById(UUID.fromString(targetUserId))
+            ?: return ResponseEntity.ok(mapOf("success" to false, "error" to "User not found in OpenCrowd"))
+
+        val xwikiClient = XWikiClient(baseUrl.trimEnd('/'), connUsername, connPassword)
+
+        if (!xwikiClient.testConnection()) {
+            return ResponseEntity.ok(mapOf("success" to false, "error" to "Connection failed"))
+        }
+
+        val created = xwikiClient.createUser(
+            username = user.username,
+            email = user.email,
+            firstName = user.firstName,
+            lastName = user.lastName,
+            password = null, // Don't set password — user will reset via xWiki
+        )
+
+        return if (created) {
+            ResponseEntity.ok(mapOf(
+                "success" to true,
+                "message" to "User '${user.username}' provisioned to xWiki",
+            ))
+        } else {
+            ResponseEntity.ok(mapOf(
+                "success" to false,
+                "error" to "Failed to create user in xWiki",
+            ))
+        }
+    }
+
     @PostMapping("/{id}/import-groups")
     @Operation(summary = "Import groups", description = "Imports groups from connected application into OpenCrowd")
     @PreAuthorize("hasRole('manage_connectors')")

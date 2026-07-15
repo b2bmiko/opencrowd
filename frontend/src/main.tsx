@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { DashboardPage } from '@/pages/Dashboard';
 import { IdentityPage } from '@/pages/Identity';
+import { UserDetailPage } from '@/pages/UserDetail';
 import { GroupsPage } from '@/pages/Groups';
 import { ApplicationsPage } from '@/pages/Applications';
 import { LoginPage } from '@/pages/Login';
@@ -53,6 +54,10 @@ function AppRouter() {
 
   // Authenticated — show app
   const getPageContent = () => {
+    if (path.startsWith('/identity/') && path.length > '/identity/'.length) {
+      const userId = path.replace('/identity/', '');
+      return { title: 'User Profile', subtitle: 'View and edit user details', component: <UserDetailPage userId={userId} onBack={() => window.location.href = '/identity'} /> };
+    }
     switch (path) {
       case '/identity':
         return { title: 'Identity', subtitle: 'Manage user identities', component: <IdentityPage /> };
