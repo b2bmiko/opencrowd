@@ -8,12 +8,10 @@ export function LoginPage() {
       <div className="w-full max-w-md space-y-8 rounded-lg border bg-card p-8 shadow-sm">
         {/* Logo */}
         <div className="text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
-            <span className="text-lg font-bold text-primary-foreground">O</span>
-          </div>
+          <img src="/logo.png" alt="OpenCrowd" className="mx-auto h-12 w-12" />
           <h1 className="mt-4 text-2xl font-bold text-foreground">OpenCrowd</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Identity & Access Governance for the Open Source World
+            Open Identity & Access Governance Hub
           </p>
         </div>
 
