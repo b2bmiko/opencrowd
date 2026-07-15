@@ -62,6 +62,7 @@ export function ApplicationsPage() {
 
 function ConnectorCard({ connector, onRefresh }: { connector: Connector; onRefresh: () => void }) {
   const [checking, setChecking] = useState(false);
+  const [showSyncDialog, setShowSyncDialog] = useState(false);
 
   const healthIcon = {
     HEALTHY: <CheckCircle className="h-5 w-5 text-emerald-500" />,
@@ -82,50 +83,61 @@ function ConnectorCard({ connector, onRefresh }: { connector: Connector; onRefre
   };
 
   return (
-    <div className="rounded-lg border bg-card p-5">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-            <Network className="h-5 w-5 text-primary" />
+    <>
+      <div className="rounded-lg border bg-card p-5">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <Network className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="font-medium text-foreground">{connector.name}</p>
+              <p className="text-xs text-muted-foreground">{connector.connectorType}</p>
+            </div>
           </div>
-          <div>
-            <p className="font-medium text-foreground">{connector.name}</p>
-            <p className="text-xs text-muted-foreground">{connector.connectorType}</p>
-          </div>
+          {connector.healthStatus && healthIcon[connector.healthStatus as keyof typeof healthIcon]}
         </div>
-        {connector.healthStatus && healthIcon[connector.healthStatus as keyof typeof healthIcon]}
+
+        <div className="mt-4 space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Status</span>
+            <Badge variant={connector.status === 'CONNECTED' ? 'success' : 'secondary'}>
+              {connector.status}
+            </Badge>
+          </div>
+          {connector.lastHealthAt && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Last health check</span>
+              <span className="text-foreground">{new Date(connector.lastHealthAt).toLocaleString()}</span>
+            </div>
+          )}
+          {connector.lastSyncAt && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Last sync</span>
+              <span className="text-foreground">{new Date(connector.lastSyncAt).toLocaleString()}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          <Button variant="outline" size="sm" onClick={runHealthCheck} disabled={checking}>
+            {checking ? 'Checking...' : 'Health Check'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowSyncDialog(true)}>
+            Sync Users
+          </Button>
+        </div>
       </div>
 
-      <div className="mt-4 space-y-2">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Status</span>
-          <Badge variant={connector.status === 'CONNECTED' ? 'success' : 'secondary'}>
-            {connector.status}
-          </Badge>
-        </div>
-        {connector.lastHealthAt && (
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Last health check</span>
-            <span className="text-foreground">{new Date(connector.lastHealthAt).toLocaleString()}</span>
-          </div>
-        )}
-        {connector.lastSyncAt && (
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Last sync</span>
-            <span className="text-foreground">{new Date(connector.lastSyncAt).toLocaleString()}</span>
-          </div>
-        )}
-      </div>
-
-      <div className="mt-4 flex gap-2">
-        <Button variant="outline" size="sm" onClick={runHealthCheck} disabled={checking}>
-          {checking ? 'Checking...' : 'Health Check'}
-        </Button>
-        <Button variant="outline" size="sm" disabled>
-          Sync
-        </Button>
-      </div>
-    </div>
+      {showSyncDialog && (
+        <SyncDialog
+          connectorId={connector.id}
+          connectorName={connector.name}
+          onClose={() => setShowSyncDialog(false)}
+          onSuccess={() => { setShowSyncDialog(false); onRefresh(); }}
+        />
+      )}
+    </>
   );
 }
 
@@ -182,6 +194,102 @@ function CreateConnectorDialog({ onClose, onSuccess }: { onClose: () => void; on
             <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Connecting...' : 'Connect'}</Button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+
+function SyncDialog({ connectorId, connectorName, onClose, onSuccess }: { connectorId: string; connectorName: string; onClose: () => void; onSuccess: () => void }) {
+  const [form, setForm] = useState({ baseUrl: '', username: '', password: '' });
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; created?: number; skipped?: number; errors?: number; error?: string } | null>(null);
+
+  const handleSync = async (type: 'users' | 'groups') => {
+    setIsSyncing(true);
+    setResult(null);
+    try {
+      const response = await apiClient.post(`/connectors/${connectorId}/import-${type}`, form);
+      setResult(response.data);
+    } catch (e: unknown) {
+      setResult({ success: false, error: 'Sync failed' });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-lg">
+        <h2 className="text-lg font-semibold text-foreground">Sync: {connectorName}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Enter connection credentials to import users and groups
+        </p>
+
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="text-sm font-medium text-foreground">Base URL</label>
+            <input
+              type="text"
+              value={form.baseUrl}
+              onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
+              className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="https://xwiki.example.com"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-foreground">Username</label>
+            <input
+              type="text"
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+              className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="admin"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-foreground">Password</label>
+            <input
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="••••••••"
+            />
+          </div>
+        </div>
+
+        {result && (
+          <div className={`mt-4 rounded-md p-3 text-sm ${result.success ? 'bg-emerald-50 text-emerald-700' : 'bg-destructive/10 text-destructive'}`}>
+            {result.success
+              ? `Imported: ${result.created} created, ${result.skipped} skipped, ${result.errors} errors`
+              : `Error: ${result.error}`
+            }
+          </div>
+        )}
+
+        <div className="mt-6 flex justify-between">
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={() => handleSync('users')}
+              disabled={isSyncing || !form.baseUrl || !form.username || !form.password}
+            >
+              {isSyncing ? 'Syncing...' : 'Import Users'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleSync('groups')}
+              disabled={isSyncing || !form.baseUrl || !form.username || !form.password}
+            >
+              Import Groups
+            </Button>
+          </div>
+          <Button variant="ghost" size="sm" onClick={result?.success ? onSuccess : onClose}>
+            {result?.success ? 'Done' : 'Cancel'}
+          </Button>
+        </div>
       </div>
     </div>
   );
