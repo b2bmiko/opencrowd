@@ -59,7 +59,7 @@ class UserServiceImpl(
         eventPublisher.publish(
             UserCreated(
                 tenantId = TenantContext.getTenantId() ?: "unknown",
-                actorId = null, // Will be set from SecurityContext in controller
+                actorId = null,
                 correlationId = UUID.randomUUID().toString(),
                 userId = saved.id!!,
                 email = saved.email,

@@ -90,13 +90,14 @@ class ConnectorController(
     }
 
     @PostMapping("/test-connection")
-    @Operation(summary = "Test connection", description = "Tests connectivity to an application before saving")
+    @Operation(summary = "Test connection", description = "Tests connectivity to an application and saves credentials on success")
     @PreAuthorize("hasRole('manage_connectors')")
     fun testConnection(@RequestBody body: Map<String, String>): ResponseEntity<Map<String, Any>> {
         val connectorType = body["connectorType"] ?: throw IllegalArgumentException("Missing connectorType")
         val baseUrl = body["baseUrl"] ?: throw IllegalArgumentException("Missing baseUrl")
         val username = body["username"] ?: throw IllegalArgumentException("Missing username")
         val password = body["password"] ?: throw IllegalArgumentException("Missing password")
+        val connectorId = body["connectorId"] // Optional — if provided, saves credentials to this connector
 
         val connector = connectorRegistry.getById(connectorType)
             ?: return ResponseEntity.badRequest().body(mapOf("success" to false, "message" to "Unknown connector type: $connectorType"))
@@ -111,6 +112,22 @@ class ConnectorController(
             is ConnectorResult.Success -> {
                 val healthResult = runBlocking { connector.healthCheck() }
                 val health = (healthResult as? ConnectorResult.Success)?.data
+
+                // Save credentials to connector if ID provided
+                if (connectorId != null) {
+                    try {
+                        val id = UUID.fromString(connectorId)
+                        connectorService.update(id) { dbConnector ->
+                            // Store config as JSON (in production, encrypt the password)
+                            dbConnector.config = """{"baseUrl":"$baseUrl","username":"$username","password":"$password"}"""
+                            dbConnector.status = org.opencrowd.core.entity.ConnectorStatus.CONNECTED
+                            dbConnector.healthStatus = org.opencrowd.core.entity.HealthStatus.HEALTHY
+                            dbConnector.lastHealthAt = java.time.Instant.now()
+                            dbConnector
+                        }
+                    } catch (_: Exception) { /* ignore save errors */ }
+                }
+
                 ResponseEntity.ok(mapOf(
                     "success" to true,
                     "message" to (health?.message ?: "Connected successfully"),
