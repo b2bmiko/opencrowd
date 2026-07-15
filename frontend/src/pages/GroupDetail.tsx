@@ -175,21 +175,42 @@ export function GroupDetailPage({ groupId, onBack }: GroupDetailPageProps) {
             </div>
 
             {/* Add Member Dropdown */}
-            {showAddMember && nonMembers.length > 0 && (
-              <div className="mt-3 max-h-40 overflow-y-auto rounded-md border bg-background p-2">
-                {nonMembers.slice(0, 20).map((user) => (
-                  <button
-                    key={user.id}
-                    onClick={() => { addMember(user.id); setShowAddMember(false); }}
-                    className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-muted"
-                  >
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">
-                      {(user.displayName || user.username).charAt(0).toUpperCase()}
-                    </div>
-                    <span>{user.displayName || user.username}</span>
-                    <span className="text-xs text-muted-foreground">@{user.username}</span>
-                  </button>
-                ))}
+            {showAddMember && (
+              <div className="mt-3 rounded-md border bg-background p-2">
+                <input
+                  type="text"
+                  placeholder="Search users..."
+                  className="mb-2 h-8 w-full rounded border bg-card px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  onChange={(e) => {
+                    const searchEl = e.target.parentElement?.querySelector('[data-member-list]');
+                    if (searchEl) {
+                      const items = searchEl.querySelectorAll('[data-username]');
+                      items.forEach((item) => {
+                        const text = (item as HTMLElement).dataset.username || '';
+                        (item as HTMLElement).style.display = text.toLowerCase().includes(e.target.value.toLowerCase()) ? '' : 'none';
+                      });
+                    }
+                  }}
+                  autoFocus
+                />
+                <div data-member-list className="max-h-40 overflow-y-auto">
+                  {nonMembers.length > 0 ? nonMembers.map((user) => (
+                    <button
+                      key={user.id}
+                      data-username={`${user.displayName || ''} ${user.username} ${user.email}`}
+                      onClick={() => { addMember(user.id); setShowAddMember(false); }}
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-muted"
+                    >
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">
+                        {(user.displayName || user.username).charAt(0).toUpperCase()}
+                      </div>
+                      <span className="flex-1">{user.displayName || user.username}</span>
+                      <span className="text-xs text-muted-foreground">@{user.username}</span>
+                    </button>
+                  )) : (
+                    <p className="px-3 py-2 text-sm text-muted-foreground">All users are already members</p>
+                  )}
+                </div>
               </div>
             )}
 
