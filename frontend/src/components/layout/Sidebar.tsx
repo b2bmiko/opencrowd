@@ -38,13 +38,11 @@ export function Sidebar({ currentPath }: SidebarProps) {
   return (
     <aside className="flex h-full w-64 flex-col bg-sidebar text-sidebar-foreground">
       {/* Logo */}
-      <div className="flex h-16 items-center gap-2 px-6">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-          <span className="text-sm font-bold text-primary-foreground">O</span>
-        </div>
+      <div className="flex h-20 items-center gap-3 px-4">
+        <img src="/logo-icon.png" alt="OpenCrowd" className="h-10 w-10 rounded" />
         <div className="flex flex-col">
-          <span className="text-base font-semibold leading-tight">OpenCrowd</span>
-          <span className="text-[10px] leading-tight text-sidebar-foreground/60">Identity & Access Governance</span>
+          <span className="text-lg font-bold leading-tight text-sidebar-foreground">OpenCrowd</span>
+          <span className="text-[11px] leading-tight text-sidebar-foreground/50" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>Open Identity & Access Governance Hub</span>
         </div>
       </div>
 

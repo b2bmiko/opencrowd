@@ -8,11 +8,9 @@ export function LoginPage() {
       <div className="w-full max-w-md space-y-8 rounded-lg border bg-card p-8 shadow-sm">
         {/* Logo */}
         <div className="text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
-            <span className="text-lg font-bold text-primary-foreground">O</span>
-          </div>
+          <img src="/logo-icon.png" alt="OpenCrowd" className="mx-auto h-14 w-14 rounded" />
           <h1 className="mt-4 text-2xl font-bold text-foreground">OpenCrowd</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
             Open Identity & Access Governance Hub
           </p>
         </div>
