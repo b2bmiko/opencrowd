@@ -39,10 +39,12 @@ export function Sidebar({ currentPath }: SidebarProps) {
     <aside className="flex h-full w-64 flex-col bg-sidebar text-sidebar-foreground">
       {/* Logo */}
       <div className="flex h-16 items-center gap-2 px-6">
-        <img src="/logo.png" alt="OpenCrowd" className="h-8 w-8" />
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+          <span className="text-sm font-bold text-primary-foreground">O</span>
+        </div>
         <div className="flex flex-col">
           <span className="text-base font-semibold leading-tight">OpenCrowd</span>
-          <span className="text-[10px] leading-tight text-sidebar-foreground/60">Open Identity & Access Governance Hub</span>
+          <span className="text-[10px] leading-tight text-sidebar-foreground/60">Identity & Access Governance</span>
         </div>
       </div>
 
