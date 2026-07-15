@@ -9,6 +9,7 @@ import { DashboardPage } from '@/pages/Dashboard';
 import { IdentityPage } from '@/pages/Identity';
 import { UserDetailPage } from '@/pages/UserDetail';
 import { GroupsPage } from '@/pages/Groups';
+import { GroupDetailPage } from '@/pages/GroupDetail';
 import { ApplicationsPage } from '@/pages/Applications';
 import { LoginPage } from '@/pages/Login';
 import { CallbackPage } from '@/pages/Callback';
@@ -57,6 +58,10 @@ function AppRouter() {
     if (path.startsWith('/identity/') && path.length > '/identity/'.length) {
       const userId = path.replace('/identity/', '');
       return { title: 'User Profile', subtitle: 'View and edit user details', component: <UserDetailPage userId={userId} onBack={() => window.location.href = '/identity'} /> };
+    }
+    if (path.startsWith('/groups/') && path.length > '/groups/'.length) {
+      const groupId = path.replace('/groups/', '');
+      return { title: 'Group Details', subtitle: 'View and manage group members', component: <GroupDetailPage groupId={groupId} onBack={() => window.location.href = '/groups'} /> };
     }
     switch (path) {
       case '/identity':
