@@ -168,6 +168,7 @@ class UserController(
         title = title,
         phone = phone,
         avatarUrl = avatarUrl,
+        externalId = externalId,
         lastLoginAt = lastLoginAt?.toString(),
         createdAt = createdAt.toString(),
         updatedAt = updatedAt.toString(),

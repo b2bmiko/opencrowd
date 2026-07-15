@@ -14,6 +14,7 @@ export interface User {
   title: string | null;
   phone: string | null;
   avatarUrl: string | null;
+  externalId: string | null;
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;

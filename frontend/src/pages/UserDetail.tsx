@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Save, UserCog } from 'lucide-react';
+import { ArrowLeft, Save, UserCog, Users, Network, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { apiClient } from '@/lib/api-client';
-import type { User } from '@/types/models';
+import type { User, Group } from '@/types/models';
 
 interface UserDetailPageProps {
   userId: string;
@@ -12,6 +12,7 @@ interface UserDetailPageProps {
 
 export function UserDetailPage({ userId, onBack }: UserDetailPageProps) {
   const [user, setUser] = useState<User | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +28,7 @@ export function UserDetailPage({ userId, onBack }: UserDetailPageProps) {
 
   useEffect(() => {
     loadUser();
+    loadGroups();
   }, [userId]);
 
   const loadUser = async () => {
@@ -47,6 +49,15 @@ export function UserDetailPage({ userId, onBack }: UserDetailPageProps) {
       setError('Failed to load user');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadGroups = async () => {
+    try {
+      const response = await apiClient.get<{ content: Group[] }>('/groups', { params: { size: 100 } });
+      setGroups(response.data.content || []);
+    } catch (e) {
+      // Groups loading is non-critical
     }
   };
 
@@ -93,9 +104,7 @@ export function UserDetailPage({ userId, onBack }: UserDetailPageProps) {
   }
 
   if (!user) {
-    return (
-      <div className="text-center text-destructive">User not found</div>
-    );
+    return <div className="text-center text-destructive">User not found</div>;
   }
 
   const statusVariant = {
@@ -132,84 +141,97 @@ export function UserDetailPage({ userId, onBack }: UserDetailPageProps) {
       </div>
 
       {/* Messages */}
-      {error && (
-        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
-      )}
-      {success && (
-        <div className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-700">{success}</div>
-      )}
+      {error && <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
+      {success && <div className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-700">{success}</div>}
 
-      {/* Edit Form */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="space-y-4 rounded-lg border bg-card p-6">
-          <h3 className="flex items-center gap-2 font-semibold text-foreground">
-            <UserCog className="h-5 w-5" />
-            Profile Information
-          </h3>
+      {/* Main Content */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Profile Form - 2 columns */}
+        <div className="space-y-6 lg:col-span-2">
+          {/* Personal Information */}
+          <div className="rounded-lg border bg-card p-6">
+            <h3 className="flex items-center gap-2 font-semibold text-foreground">
+              <UserCog className="h-5 w-5" />
+              Personal Information
+            </h3>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-foreground">First Name</label>
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-foreground">First Name</label>
+                <input
+                  type="text"
+                  value={form.firstName}
+                  onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                  className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground">Last Name</label>
+                <input
+                  type="text"
+                  value={form.lastName}
+                  onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+                  className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <label className="text-sm font-medium text-foreground">Display Name</label>
               <input
                 type="text"
-                value={form.firstName}
-                onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                value={form.displayName}
+                onChange={(e) => setForm({ ...form, displayName: e.target.value })}
                 className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
-            <div>
-              <label className="text-sm font-medium text-foreground">Last Name</label>
-              <input
-                type="text"
-                value={form.lastName}
-                onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-                className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-          </div>
 
-          <div>
-            <label className="text-sm font-medium text-foreground">Display Name</label>
-            <input
-              type="text"
-              value={form.displayName}
-              onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-              className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-foreground">Department</label>
+            <div className="mt-4">
+              <label className="text-sm font-medium text-foreground">Phone</label>
               <input
                 type="text"
-                value={form.department}
-                onChange={(e) => setForm({ ...form, department: e.target.value })}
-                className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground">Job Title</label>
-              <input
-                type="text"
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
           </div>
 
-          <div>
-            <label className="text-sm font-medium text-foreground">Phone</label>
-            <input
-              type="text"
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
+          {/* Organization */}
+          <div className="rounded-lg border bg-card p-6">
+            <h3 className="flex items-center gap-2 font-semibold text-foreground">
+              <MapPin className="h-5 w-5" />
+              Organization & Location
+            </h3>
+
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-foreground">Department</label>
+                <input
+                  type="text"
+                  value={form.department}
+                  onChange={(e) => setForm({ ...form, department: e.target.value })}
+                  className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground">Job Title</label>
+                <input
+                  type="text"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            </div>
+
+            <p className="mt-4 text-xs text-muted-foreground italic">
+              Additional fields (country, address, postal code) will be available via custom field configuration in Settings.
+            </p>
           </div>
 
-          <div className="flex justify-end pt-2">
+          {/* Save Button */}
+          <div className="flex justify-end">
             <Button onClick={handleSave} disabled={isSaving}>
               <Save className="mr-2 h-4 w-4" />
               {isSaving ? 'Saving...' : 'Save Changes'}
@@ -217,8 +239,9 @@ export function UserDetailPage({ userId, onBack }: UserDetailPageProps) {
           </div>
         </div>
 
-        {/* Status & Metadata */}
-        <div className="space-y-4">
+        {/* Right sidebar */}
+        <div className="space-y-6">
+          {/* Lifecycle */}
           <div className="rounded-lg border bg-card p-6">
             <h3 className="font-semibold text-foreground">Lifecycle Status</h3>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -250,6 +273,59 @@ export function UserDetailPage({ userId, onBack }: UserDetailPageProps) {
             </div>
           </div>
 
+          {/* Group Memberships */}
+          <div className="rounded-lg border bg-card p-6">
+            <h3 className="flex items-center gap-2 font-semibold text-foreground">
+              <Users className="h-5 w-5" />
+              Group Memberships
+            </h3>
+            {groups.length > 0 ? (
+              <ul className="mt-3 space-y-2">
+                {groups.slice(0, 10).map((group) => (
+                  <li key={group.id} className="flex items-center justify-between text-sm">
+                    <span className="text-foreground">{group.name}</span>
+                    <Badge variant="secondary">{group.type}</Badge>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">Not a member of any groups</p>
+            )}
+            <p className="mt-3 text-xs text-muted-foreground italic">
+              Group membership management coming soon
+            </p>
+          </div>
+
+          {/* Connected Accounts */}
+          <div className="rounded-lg border bg-card p-6">
+            <h3 className="flex items-center gap-2 font-semibold text-foreground">
+              <Network className="h-5 w-5" />
+              Connected Accounts
+            </h3>
+            <div className="mt-3 space-y-2 text-sm">
+              {user.externalId ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">xWiki</span>
+                  <Badge variant="success">Linked</Badge>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">xWiki</span>
+                  <Badge variant="outline">Not linked</Badge>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">OpenProject</span>
+                <Badge variant="outline">Not linked</Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Nextcloud</span>
+                <Badge variant="outline">Not linked</Badge>
+              </div>
+            </div>
+          </div>
+
+          {/* Account Details */}
           <div className="rounded-lg border bg-card p-6">
             <h3 className="font-semibold text-foreground">Account Details</h3>
             <dl className="mt-3 space-y-2 text-sm">
@@ -263,12 +339,18 @@ export function UserDetailPage({ userId, onBack }: UserDetailPageProps) {
               </div>
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Created</dt>
-                <dd className="text-foreground">{new Date(user.createdAt).toLocaleString()}</dd>
+                <dd className="text-foreground">{new Date(user.createdAt).toLocaleDateString()}</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Last Login</dt>
-                <dd className="text-foreground">{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : 'Never'}</dd>
+                <dd className="text-foreground">{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleDateString() : 'Never'}</dd>
               </div>
+              {user.externalId && (
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">External ID</dt>
+                  <dd className="font-mono text-xs text-foreground">{user.externalId}</dd>
+                </div>
+              )}
             </dl>
           </div>
         </div>

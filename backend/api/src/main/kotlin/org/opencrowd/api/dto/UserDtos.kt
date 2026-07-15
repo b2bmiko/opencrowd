@@ -41,6 +41,7 @@ data class UserResponse(
     val title: String?,
     val phone: String?,
     val avatarUrl: String?,
+    val externalId: String?,
     val lastLoginAt: String?,
     val createdAt: String,
     val updatedAt: String,
