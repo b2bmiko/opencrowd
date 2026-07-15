@@ -39,10 +39,19 @@ export function Sidebar({ currentPath }: SidebarProps) {
     <aside className="flex h-full w-64 flex-col bg-sidebar text-sidebar-foreground">
       {/* Logo */}
       <div className="flex h-20 items-center gap-3 px-4">
-        <img src="/logo-icon.png" alt="OpenCrowd" className="h-10 w-10 rounded" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-6 w-6 text-primary-foreground">
+            <circle cx="12" cy="12" r="3" />
+            <circle cx="12" cy="12" r="8" strokeDasharray="4 2" />
+            <line x1="12" y1="2" x2="12" y2="4" />
+            <line x1="12" y1="20" x2="12" y2="22" />
+            <line x1="2" y1="12" x2="4" y2="12" />
+            <line x1="20" y1="12" x2="22" y2="12" />
+          </svg>
+        </div>
         <div className="flex flex-col">
           <span className="text-lg font-bold leading-tight text-sidebar-foreground">OpenCrowd</span>
-          <span className="text-[11px] leading-tight text-sidebar-foreground/50" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>Open Identity & Access Governance Hub</span>
+          <span className="text-[11px] font-semibold leading-tight text-sidebar-foreground/50" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>Open Identity & Access Governance Hub</span>
         </div>
       </div>
 
