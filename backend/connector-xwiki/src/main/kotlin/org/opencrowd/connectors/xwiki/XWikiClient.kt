@@ -140,22 +140,20 @@ class XWikiClient(
     private fun parseUserObjects(xml: String): List<XWikiUser> {
         val users = mutableListOf<XWikiUser>()
         try {
-            // Parse object summaries to get page references
-            val pageRegex = "<headline>(.*?)</headline>".toRegex()
+            // Parse objectSummary elements - extract pageName as username
+            val pageNameRegex = "<pageName>(.*?)</pageName>".toRegex()
             val idRegex = "<id>(.*?)</id>".toRegex()
-            val linkRegex = """<link[^>]*href="([^"]*)"[^>]*rel="http://www\.xwiki\.org/rel/object"[^>]*/>""".toRegex()
+            val guiIdRegex = "<guid>(.*?)</guid>".toRegex()
 
-            val headlines = pageRegex.findAll(xml).map { it.groupValues[1] }.toList()
-            val ids = idRegex.findAll(xml).map { it.groupValues[1] }.toList()
+            val pageNames = pageNameRegex.findAll(xml).map { it.groupValues[1] }.toList()
+            val guids = guiIdRegex.findAll(xml).map { it.groupValues[1] }.toList()
 
-            headlines.forEachIndexed { index, headline ->
-                val parts = headline.split(".")
-                val username = parts.lastOrNull() ?: headline
+            pageNames.forEachIndexed { index, pageName ->
                 users.add(
                     XWikiUser(
-                        username = username,
-                        fullName = headline,
-                        id = ids.getOrNull(index) ?: "",
+                        username = pageName,
+                        fullName = "XWiki.$pageName",
+                        id = guids.getOrNull(index) ?: "",
                     )
                 )
             }
@@ -168,14 +166,13 @@ class XWikiClient(
     private fun parseGroupObjects(xml: String): List<XWikiGroup> {
         val groups = mutableListOf<XWikiGroup>()
         try {
-            val pageRegex = "<headline>(.*?)</headline>".toRegex()
-            val headlines = pageRegex.findAll(xml).map { it.groupValues[1] }.toList()
+            val pageNameRegex = "<pageName>(.*?)</pageName>".toRegex()
+            val pageNames = pageNameRegex.findAll(xml).map { it.groupValues[1] }.toList()
 
-            // Deduplicate by page name (groups appear once per member)
-            val uniquePages = headlines.map { it.substringBeforeLast(".") }.distinct()
-            uniquePages.forEach { pageName ->
-                val name = pageName.substringAfterLast(".")
-                groups.add(XWikiGroup(name = name, fullName = pageName))
+            // Deduplicate (groups appear once per member in xWiki)
+            val uniqueNames = pageNames.distinct()
+            uniqueNames.forEach { name ->
+                groups.add(XWikiGroup(name = name, fullName = "XWiki.$name"))
             }
         } catch (e: Exception) {
             logger.error("Failed to parse group objects: ${e.message}")
