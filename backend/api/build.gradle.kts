@@ -19,6 +19,7 @@ dependencies {
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.cache)
     implementation(libs.spring.boot.starter.data.redis)
+    implementation(libs.kotlinx.coroutines.core)
     implementation(libs.spring.boot.starter.oauth2.resource.server)
     implementation(libs.jackson.module.kotlin)
     implementation(libs.jackson.datatype.jsr310)

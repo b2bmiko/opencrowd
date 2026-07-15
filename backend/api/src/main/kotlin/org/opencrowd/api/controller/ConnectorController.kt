@@ -7,9 +7,15 @@ import org.opencrowd.api.dto.ApiResponse
 import org.opencrowd.api.dto.ConnectorResponse
 import org.opencrowd.api.dto.CreateConnectorRequest
 import org.opencrowd.api.dto.ListResponse
+import org.opencrowd.connectors.sdk.AuthConfig
+import org.opencrowd.connectors.sdk.ConnectorConfig
+import org.opencrowd.connectors.sdk.ConnectorRegistry
+import org.opencrowd.connectors.sdk.ConnectorResult
+import org.opencrowd.connectors.sdk.SyncOptions
 import org.opencrowd.core.entity.Connector
 import org.opencrowd.core.entity.ConnectorStatus
 import org.opencrowd.core.service.ConnectorService
+import kotlinx.coroutines.runBlocking
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
@@ -27,6 +33,7 @@ import java.util.UUID
 @Tag(name = "Connectors", description = "Application connector management")
 class ConnectorController(
     private val connectorService: ConnectorService,
+    private val connectorRegistry: ConnectorRegistry,
 ) {
 
     @GetMapping
@@ -71,7 +78,6 @@ class ConnectorController(
     @Operation(summary = "Run health check", description = "Triggers a health check on the connector")
     @PreAuthorize("hasRole('manage_connectors')")
     fun healthCheck(@PathVariable id: UUID): ResponseEntity<Map<String, Any>> {
-        // For now, just mark as healthy — real implementation in Task 11-13
         connectorService.updateHealthStatus(id, true)
         return ResponseEntity.ok(mapOf("status" to "healthy", "message" to "Health check passed"))
     }
@@ -80,8 +86,87 @@ class ConnectorController(
     @Operation(summary = "Trigger sync", description = "Triggers a manual synchronization")
     @PreAuthorize("hasRole('manage_connectors')")
     fun triggerSync(@PathVariable id: UUID): ResponseEntity<Map<String, String>> {
-        // Placeholder — real sync in Tasks 11-13
         return ResponseEntity.ok(mapOf("status" to "triggered", "message" to "Sync will be implemented with connector SDK"))
+    }
+
+    @PostMapping("/test-connection")
+    @Operation(summary = "Test connection", description = "Tests connectivity to an application before saving")
+    @PreAuthorize("hasRole('manage_connectors')")
+    fun testConnection(@RequestBody body: Map<String, String>): ResponseEntity<Map<String, Any>> {
+        val connectorType = body["connectorType"] ?: throw IllegalArgumentException("Missing connectorType")
+        val baseUrl = body["baseUrl"] ?: throw IllegalArgumentException("Missing baseUrl")
+        val username = body["username"] ?: throw IllegalArgumentException("Missing username")
+        val password = body["password"] ?: throw IllegalArgumentException("Missing password")
+
+        val connector = connectorRegistry.getById(connectorType)
+            ?: return ResponseEntity.badRequest().body(mapOf("success" to false, "message" to "Unknown connector type: $connectorType"))
+
+        val config = ConnectorConfig(
+            baseUrl = baseUrl,
+            authentication = AuthConfig.BasicAuth(username, password),
+        )
+
+        val result = runBlocking { connector.connect(config) }
+        return when (result) {
+            is ConnectorResult.Success -> {
+                val healthResult = runBlocking { connector.healthCheck() }
+                val health = (healthResult as? ConnectorResult.Success)?.data
+                ResponseEntity.ok(mapOf(
+                    "success" to true,
+                    "message" to (health?.message ?: "Connected successfully"),
+                    "responseTime" to (health?.responseTime ?: 0),
+                    "details" to (health?.details ?: emptyMap<String, Any>()),
+                ))
+            }
+            is ConnectorResult.Failure -> ResponseEntity.ok(mapOf(
+                "success" to false,
+                "message" to result.message,
+            ))
+        }
+    }
+
+    @PostMapping("/{id}/sync-users")
+    @Operation(summary = "Sync users", description = "Syncs users from the connected application")
+    @PreAuthorize("hasRole('manage_connectors')")
+    fun syncUsers(
+        @PathVariable id: UUID,
+        @RequestBody body: Map<String, String>
+    ): ResponseEntity<Map<String, Any>> {
+        val dbConnector = connectorService.findById(id)
+            ?: return ResponseEntity.notFound().build()
+
+        val connector = connectorRegistry.getById(dbConnector.connectorType)
+            ?: return ResponseEntity.badRequest().body(mapOf("error" to "Unknown connector type"))
+
+        val baseUrl = body["baseUrl"] ?: throw IllegalArgumentException("Missing baseUrl")
+        val username = body["username"] ?: throw IllegalArgumentException("Missing username")
+        val password = body["password"] ?: throw IllegalArgumentException("Missing password")
+
+        val config = ConnectorConfig(
+            baseUrl = baseUrl,
+            authentication = AuthConfig.BasicAuth(username, password),
+        )
+
+        // Connect and sync
+        val connectResult = runBlocking { connector.connect(config) }
+        if (connectResult is ConnectorResult.Failure) {
+            return ResponseEntity.ok(mapOf("error" to connectResult.message))
+        }
+
+        val syncResult = runBlocking { connector.syncUsers(SyncOptions()) }
+        return when (syncResult) {
+            is ConnectorResult.Success -> ResponseEntity.ok(mapOf(
+                "success" to true,
+                "created" to syncResult.data.created,
+                "updated" to syncResult.data.updated,
+                "deleted" to syncResult.data.deleted,
+                "skipped" to syncResult.data.skipped,
+            ))
+            is ConnectorResult.Failure -> ResponseEntity.ok(mapOf(
+                "success" to false,
+                "error" to syncResult.message,
+            ))
+        }
     }
 
     @DeleteMapping("/{id}")

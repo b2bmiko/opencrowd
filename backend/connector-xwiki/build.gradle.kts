@@ -18,6 +18,7 @@ dependencies {
     implementation(libs.spring.boot.starter.web)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.jackson.module.kotlin)
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.18.1")
 
     testImplementation(libs.spring.boot.starter.test)
 }
