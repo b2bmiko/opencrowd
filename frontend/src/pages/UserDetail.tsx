@@ -271,6 +271,31 @@ export function UserDetailPage({ userId, onBack }: UserDetailPageProps) {
                 <Button variant="outline" size="sm" onClick={() => handleStatusChange('ACTIVE')}>Activate</Button>
               )}
             </div>
+
+            {/* Delete */}
+            <div className="mt-6 border-t pt-4">
+              <h4 className="text-sm font-medium text-destructive">Danger Zone</h4>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Permanently delete this user. This cannot be undone.
+              </p>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="mt-2"
+                onClick={async () => {
+                  if (window.confirm(`Are you sure you want to delete "${user.username}"? This action cannot be undone.`)) {
+                    try {
+                      await apiClient.delete(`/users/${userId}`);
+                      window.location.href = '/identity';
+                    } catch (e: unknown) {
+                      setError('Failed to delete user');
+                    }
+                  }
+                }}
+              >
+                Delete User
+              </Button>
+            </div>
           </div>
 
           {/* Group Memberships */}

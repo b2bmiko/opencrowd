@@ -261,6 +261,31 @@ export function GroupDetailPage({ groupId, onBack }: GroupDetailPageProps) {
                 <dd className="text-foreground">{new Date(group.createdAt).toLocaleDateString()}</dd>
               </div>
             </dl>
+
+            {/* Delete */}
+            <div className="mt-6 border-t pt-4">
+              <h4 className="text-sm font-medium text-destructive">Danger Zone</h4>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Permanently delete this group and remove all member associations.
+              </p>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="mt-2"
+                onClick={async () => {
+                  if (window.confirm(`Are you sure you want to delete group "${group.name}"? This action cannot be undone.`)) {
+                    try {
+                      await apiClient.delete(`/groups/${groupId}`);
+                      window.location.href = '/groups';
+                    } catch (e: unknown) {
+                      setError('Failed to delete group');
+                    }
+                  }
+                }}
+              >
+                Delete Group
+              </Button>
+            </div>
           </div>
 
           <div className="rounded-lg border bg-card p-6">
