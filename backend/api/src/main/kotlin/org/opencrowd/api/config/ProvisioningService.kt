@@ -34,17 +34,34 @@ class ProvisioningService(
      * Listens to domain events and triggers provisioning automatically.
      */
     @EventListener
-    @Async
     fun onDomainEvent(event: DomainEvent) {
         when (event) {
             is UserCreated -> {
-                val user = userRepository.findById(event.userId).orElse(null) ?: return
-                onUserCreated(user)
+                logger.info("[Provisioning] UserCreated event received for user ${event.username}")
+                // Set tenant context for the provisioning query
+                org.opencrowd.core.multitenancy.TenantContext.setTenantId(event.tenantId)
+                try {
+                    val user = userRepository.findById(event.userId).orElse(null)
+                    if (user != null) {
+                        onUserCreated(user)
+                    } else {
+                        logger.warn("[Provisioning] User ${event.userId} not found in DB")
+                    }
+                } finally {
+                    org.opencrowd.core.multitenancy.TenantContext.clear()
+                }
             }
             is UserStatusChanged -> {
                 if (event.newStatus == "DISABLED" || event.newStatus == "OFFBOARDED") {
-                    val user = userRepository.findById(event.userId).orElse(null) ?: return
-                    onUserDisabled(user)
+                    org.opencrowd.core.multitenancy.TenantContext.setTenantId(event.tenantId)
+                    try {
+                        val user = userRepository.findById(event.userId).orElse(null)
+                        if (user != null) {
+                            onUserDisabled(user)
+                        }
+                    } finally {
+                        org.opencrowd.core.multitenancy.TenantContext.clear()
+                    }
                 }
             }
             else -> { /* Other events don't trigger provisioning */ }
