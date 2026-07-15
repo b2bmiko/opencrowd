@@ -159,6 +159,33 @@ class XWikiClient(
     }
 
     /**
+     * Fetch members of a specific group.
+     */
+    fun getGroupMembers(groupName: String, wiki: String = "xwiki"): List<String> {
+        val response = get("/rest/wikis/$wiki/spaces/XWiki/pages/$groupName/objects/XWiki.XWikiGroups")
+        if (response.statusCode() != 200) {
+            logger.error("Failed to fetch group members for $groupName: HTTP ${response.statusCode()}")
+            return emptyList()
+        }
+
+        val body = response.body()
+        val members = mutableListOf<String>()
+
+        // Each objectSummary with a non-empty <headline> is a member reference (XWiki.username)
+        val headlineRegex = "<headline>(.*?)</headline>".toRegex()
+        headlineRegex.findAll(body).forEach { match ->
+            val value = match.groupValues[1].trim()
+            if (value.isNotEmpty() && value.startsWith("XWiki.")) {
+                val username = value.removePrefix("XWiki.")
+                members.add(username)
+            }
+        }
+
+        logger.debug("Group '$groupName' has ${members.size} members: $members")
+        return members
+    }
+
+    /**
      * Fetch spaces (wikis/pages structure).
      */
     fun getSpaces(wiki: String = "xwiki"): List<XWikiSpace> {

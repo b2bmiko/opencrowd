@@ -205,13 +205,37 @@ class ConnectorSyncController(
             }
         }
 
-        logger.info("xWiki group import complete: created=$created, skipped=$skipped, errors=$errors")
+        // Import group members
+        var membersLinked = 0
+        xwikiGroups.forEach { xwikiGroup ->
+            try {
+                val group = groupService.findByName(xwikiGroup.name) ?: return@forEach
+                val memberUsernames = xwikiClient.getGroupMembers(xwikiGroup.name)
+
+                memberUsernames.forEach { memberUsername ->
+                    val user = userService.findByUsername(memberUsername)
+                    if (user != null && group.id != null) {
+                        try {
+                            groupService.addMember(group.id!!, user.id!!)
+                            membersLinked++
+                        } catch (_: Exception) {
+                            // Already a member or other constraint — skip
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                logger.warn("Failed to import members for group ${xwikiGroup.name}: ${e.message}")
+            }
+        }
+
+        logger.info("xWiki group import complete: created=$created, skipped=$skipped, errors=$errors, membersLinked=$membersLinked")
 
         return ResponseEntity.ok(mapOf(
             "success" to true,
             "created" to created,
             "skipped" to skipped,
             "errors" to errors,
+            "membersLinked" to membersLinked,
             "total" to xwikiGroups.size,
             "importedGroups" to importedGroups,
         ))
