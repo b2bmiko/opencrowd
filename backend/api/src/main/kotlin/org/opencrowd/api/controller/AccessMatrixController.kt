@@ -63,6 +63,53 @@ class AccessMatrixController(
         ))
     }
 
+    @PostMapping("/toggle")
+    @Operation(summary = "Toggle permission", description = "Grant or revoke a permission for a principal")
+    @PreAuthorize("hasRole('manage_connectors')")
+    @org.springframework.transaction.annotation.Transactional
+    fun togglePermission(@RequestBody body: Map<String, String>): ResponseEntity<Map<String, Any>> {
+        val principalName = body["principalName"] ?: throw IllegalArgumentException("Missing principalName")
+        val principalType = body["principalType"] ?: throw IllegalArgumentException("Missing principalType")
+        val permission = body["permission"] ?: throw IllegalArgumentException("Missing permission")
+        val application = body["application"] ?: "xwiki"
+        val resourceName = body["resourceName"] ?: "(global)"
+        val resourceType = body["resourceType"] ?: "wiki"
+        val action = body["action"] ?: "grant" // "grant" or "revoke"
+
+        if (action == "revoke") {
+            // Remove from DB
+            val entries = accessEntryRepository.findByPrincipalName(principalName)
+                .filter { it.permission == permission && it.application == application && it.resourceName == resourceName }
+            entries.forEach { accessEntryRepository.delete(it) }
+
+            return ResponseEntity.ok(mapOf(
+                "success" to true,
+                "action" to "revoked",
+                "message" to "Permission '$permission' revoked from '$principalName'",
+            ))
+        } else {
+            // Add to DB
+            val entry = AccessEntry(
+                principalType = PrincipalType.valueOf(principalType),
+                principalName = principalName,
+                application = application,
+                resourceType = resourceType,
+                resourceName = resourceName,
+                permission = permission,
+                allow = true,
+                source = "manual",
+                syncedAt = java.time.Instant.now(),
+            )
+            accessEntryRepository.save(entry)
+
+            return ResponseEntity.ok(mapOf(
+                "success" to true,
+                "action" to "granted",
+                "message" to "Permission '$permission' granted to '$principalName'",
+            ))
+        }
+    }
+
     @PostMapping("/sync-rights")
     @Operation(summary = "Sync rights from xWiki", description = "Fetches permissions from xWiki and stores them in the Access Matrix")
     @PreAuthorize("hasRole('manage_connectors')")

@@ -72,6 +72,32 @@ export function AccessMatrixPage() {
   // Get unique permissions (columns)
   const allPermissions = [...new Set(entries.map((e) => e.permission))].sort();
 
+  const togglePermission = async (principalName: string, permission: string, currentlyGranted: boolean, entry?: AccessEntry) => {
+    try {
+      const principalType = entry?.principalType || (activeTab === 'groups' ? 'GROUP' : 'USER');
+      const application = entry?.application || 'xwiki';
+      const resourceName = entry?.resourceName || '(global)';
+      const resourceType = entry?.resourceType || 'wiki';
+
+      const response = await apiClient.post<{ success: boolean; message: string }>('/access-matrix/toggle', {
+        principalName,
+        principalType,
+        permission,
+        application,
+        resourceName,
+        resourceType,
+        action: currentlyGranted ? 'revoke' : 'grant',
+      });
+
+      if (response.data.success) {
+        // Refresh the matrix
+        loadEntries();
+      }
+    } catch (e) {
+      console.error('Failed to toggle permission:', e);
+    }
+  };
+
   // Get unique resources for filter
   const allResources = [...new Set(entries.map((e) => e.resourceName))].sort();
 
@@ -204,17 +230,24 @@ export function AccessMatrixPage() {
                       </td>
                       {allPermissions.map((perm) => {
                         const hasPermission = perms.get(perm);
+                        const entry = filteredEntries.find(e => e.principalName === principal && e.permission === perm);
                         return (
                           <td key={perm} className="px-3 py-2 text-center">
-                            {hasPermission === true && (
-                              <CheckCircle className="mx-auto h-5 w-5 text-emerald-500" />
-                            )}
-                            {hasPermission === false && (
-                              <XCircle className="mx-auto h-5 w-5 text-red-500" />
-                            )}
-                            {hasPermission === undefined && (
-                              <span className="text-muted-foreground/30">—</span>
-                            )}
+                            <button
+                              onClick={() => togglePermission(principal, perm, hasPermission === true, entry)}
+                              className="rounded p-1 transition-colors hover:bg-muted"
+                              title={hasPermission === true ? `Revoke '${perm}' from '${principal}'` : `Grant '${perm}' to '${principal}'`}
+                            >
+                              {hasPermission === true && (
+                                <CheckCircle className="mx-auto h-5 w-5 text-emerald-500" />
+                              )}
+                              {hasPermission === false && (
+                                <XCircle className="mx-auto h-5 w-5 text-red-500" />
+                              )}
+                              {hasPermission === undefined && (
+                                <span className="inline-block h-5 w-5 rounded-full border-2 border-dashed border-muted-foreground/30" />
+                              )}
+                            </button>
                           </td>
                         );
                       })}
