@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, RefreshCw, Search, Filter } from 'lucide-react';
+import { Shield, RefreshCw, Search, CheckCircle, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { apiClient } from '@/lib/api-client';
@@ -17,14 +17,16 @@ interface AccessEntry {
   syncedAt: string;
 }
 
+type Tab = 'groups' | 'users' | 'spaces' | 'inspect';
+
 export function AccessMatrixPage() {
   const [entries, setEntries] = useState<AccessEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>('groups');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterApp, setFilterApp] = useState<string>('');
-  const [filterType, setFilterType] = useState<string>('');
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [selectedResource, setSelectedResource] = useState<string>('');
 
   useEffect(() => {
     loadEntries();
@@ -46,30 +48,13 @@ export function AccessMatrixPage() {
     setIsSyncing(true);
     setSyncResult(null);
     try {
-      // Get stored credentials from the xwiki connector
-      const connectorsRes = await apiClient.get<{ data: { id: string; connectorType: string; config: string }[] }>('/connectors');
-      const xwikiConnector = connectorsRes.data.data.find((c) => c.connectorType === 'xwiki');
-
-      if (!xwikiConnector) {
-        setSyncResult('No xWiki connector found. Register one first.');
-        return;
-      }
-
-      // We need credentials — for now prompt or use stored
       const baseUrl = prompt('xWiki Base URL:', 'https://xwiki.notropia.co');
       const username = prompt('Username:', 'kiro2');
       const password = prompt('Password:');
 
-      if (!baseUrl || !username || !password) {
-        setSyncResult('Cancelled');
-        return;
-      }
+      if (!baseUrl || !username || !password) { setSyncResult('Cancelled'); setIsSyncing(false); return; }
 
-      const response = await apiClient.post<{ success: boolean; entriesCreated?: number; error?: string }>('/access-matrix/sync-rights', {
-        baseUrl,
-        username,
-        password,
-      });
+      const response = await apiClient.post<{ success: boolean; entriesCreated?: number; error?: string }>('/access-matrix/sync-rights', { baseUrl, username, password });
 
       if (response.data.success) {
         setSyncResult(`Synced! ${response.data.entriesCreated} permission entries imported.`);
@@ -84,23 +69,34 @@ export function AccessMatrixPage() {
     }
   };
 
+  // Get unique permissions (columns)
+  const allPermissions = [...new Set(entries.map((e) => e.permission))].sort();
+
+  // Get unique resources for filter
+  const allResources = [...new Set(entries.map((e) => e.resourceName))].sort();
+
+  // Filter entries based on tab and search
   const filteredEntries = entries.filter((entry) => {
+    if (activeTab === 'groups' && entry.principalType !== 'GROUP') return false;
+    if (activeTab === 'users' && entry.principalType !== 'USER') return false;
+    if (selectedResource && entry.resourceName !== selectedResource) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      if (!entry.principalName.toLowerCase().includes(q) &&
-          !entry.resourceName.toLowerCase().includes(q) &&
-          !entry.permission.toLowerCase().includes(q)) {
-        return false;
-      }
+      if (!entry.principalName.toLowerCase().includes(q)) return false;
     }
-    if (filterApp && entry.application !== filterApp) return false;
-    if (filterType && entry.principalType !== filterType) return false;
     return true;
   });
 
-  // Group by principal for matrix view
-  const principals = [...new Set(filteredEntries.map((e) => e.principalName))];
-  const permissions = [...new Set(filteredEntries.map((e) => e.permission))].sort();
+  // Build matrix: rows = unique principals, columns = permissions
+  const principalMap = new Map<string, Map<string, boolean>>();
+  filteredEntries.forEach((entry) => {
+    if (!principalMap.has(entry.principalName)) {
+      principalMap.set(entry.principalName, new Map());
+    }
+    principalMap.get(entry.principalName)!.set(entry.permission, entry.allow);
+  });
+
+  const principals = [...principalMap.keys()].sort();
 
   return (
     <div className="space-y-6">
@@ -124,114 +120,109 @@ export function AccessMatrixPage() {
         </div>
       )}
 
+      {/* Tabs */}
+      <div className="border-b">
+        <nav className="flex gap-6">
+          {([
+            { id: 'groups', label: 'Groups' },
+            { id: 'users', label: 'Users' },
+            { id: 'spaces', label: 'By Resource' },
+            { id: 'inspect', label: 'Inspect Permissions' },
+          ] as { id: Tab; label: string }[]).map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`border-b-2 pb-3 text-sm font-medium transition-colors ${
+                activeTab === tab.id
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
       {/* Filters */}
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search by principal, resource, permission..."
+            placeholder={`Search ${activeTab === 'groups' ? 'groups' : 'users'}...`}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="h-9 w-full rounded-md border bg-background pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
-        <select
-          value={filterApp}
-          onChange={(e) => setFilterApp(e.target.value)}
-          className="h-9 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-        >
-          <option value="">All apps</option>
-          <option value="xwiki">xWiki</option>
-          <option value="openproject">OpenProject</option>
-          <option value="nextcloud">Nextcloud</option>
-        </select>
-        <select
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
-          className="h-9 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-        >
-          <option value="">Users & Groups</option>
-          <option value="USER">Users only</option>
-          <option value="GROUP">Groups only</option>
-        </select>
+        {(activeTab === 'spaces' || allResources.length > 1) && (
+          <select
+            value={selectedResource}
+            onChange={(e) => setSelectedResource(e.target.value)}
+            className="h-9 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">All resources</option>
+            {allResources.map((r) => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+        )}
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Total Entries</p>
-          <p className="text-2xl font-bold text-foreground">{entries.length}</p>
-        </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Principals</p>
-          <p className="text-2xl font-bold text-foreground">{principals.length}</p>
-        </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Permission Types</p>
-          <p className="text-2xl font-bold text-foreground">{permissions.length}</p>
-        </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Applications</p>
-          <p className="text-2xl font-bold text-foreground">{[...new Set(entries.map((e) => e.application))].length}</p>
-        </div>
-      </div>
-
-      {/* Matrix Table */}
+      {/* Matrix */}
       <div className="rounded-lg border bg-card">
         {isLoading ? (
           <div className="flex h-40 items-center justify-center">
             <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
           </div>
-        ) : filteredEntries.length > 0 ? (
+        ) : principals.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b bg-muted/50 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  <th className="px-4 py-3">Principal</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Application</th>
-                  <th className="px-4 py-3">Resource</th>
-                  <th className="px-4 py-3">Permission</th>
-                  <th className="px-4 py-3">Access</th>
+                <tr className="border-b bg-muted/50">
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground sticky left-0 bg-muted/50 min-w-[200px]">
+                    {activeTab === 'groups' ? 'Group' : 'User'}
+                  </th>
+                  {allPermissions.map((perm) => (
+                    <th key={perm} className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider text-muted-foreground min-w-[80px]">
+                      {perm}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filteredEntries.slice(0, 100).map((entry) => (
-                  <tr key={entry.id} className="hover:bg-muted/30">
-                    <td className="px-4 py-2">
-                      <div className="flex items-center gap-2">
-                        <Shield className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm font-medium text-foreground">{entry.principalName}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-2">
-                      <Badge variant={entry.principalType === 'GROUP' ? 'default' : 'secondary'}>
-                        {entry.principalType}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-2 text-sm text-foreground">{entry.application}</td>
-                    <td className="px-4 py-2">
-                      <span className="text-sm text-foreground">{entry.resourceName}</span>
-                      <span className="ml-1 text-xs text-muted-foreground">({entry.resourceType})</span>
-                    </td>
-                    <td className="px-4 py-2">
-                      <Badge variant="outline">{entry.permission}</Badge>
-                    </td>
-                    <td className="px-4 py-2">
-                      <Badge variant={entry.allow ? 'success' : 'destructive'}>
-                        {entry.allow ? 'Allow' : 'Deny'}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
+                {principals.map((principal) => {
+                  const perms = principalMap.get(principal)!;
+                  return (
+                    <tr key={principal} className="hover:bg-muted/30">
+                      <td className="px-4 py-2 sticky left-0 bg-card">
+                        <div className="flex items-center gap-2">
+                          <Shield className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium text-foreground">{principal}</span>
+                        </div>
+                      </td>
+                      {allPermissions.map((perm) => {
+                        const hasPermission = perms.get(perm);
+                        return (
+                          <td key={perm} className="px-3 py-2 text-center">
+                            {hasPermission === true && (
+                              <CheckCircle className="mx-auto h-5 w-5 text-emerald-500" />
+                            )}
+                            {hasPermission === false && (
+                              <XCircle className="mx-auto h-5 w-5 text-red-500" />
+                            )}
+                            {hasPermission === undefined && (
+                              <span className="text-muted-foreground/30">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
-            {filteredEntries.length > 100 && (
-              <p className="px-4 py-3 text-sm text-muted-foreground">
-                Showing first 100 of {filteredEntries.length} entries
-              </p>
-            )}
           </div>
         ) : (
           <div className="flex h-40 flex-col items-center justify-center text-muted-foreground">
@@ -241,6 +232,28 @@ export function AccessMatrixPage() {
           </div>
         )}
       </div>
+
+      {/* Summary */}
+      {entries.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-sm text-muted-foreground">Total Entries</p>
+            <p className="text-2xl font-bold text-foreground">{entries.length}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-sm text-muted-foreground">Groups</p>
+            <p className="text-2xl font-bold text-foreground">{[...new Set(entries.filter(e => e.principalType === 'GROUP').map(e => e.principalName))].length}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-sm text-muted-foreground">Users</p>
+            <p className="text-2xl font-bold text-foreground">{[...new Set(entries.filter(e => e.principalType === 'USER').map(e => e.principalName))].length}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-sm text-muted-foreground">Resources</p>
+            <p className="text-2xl font-bold text-foreground">{allResources.length}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
