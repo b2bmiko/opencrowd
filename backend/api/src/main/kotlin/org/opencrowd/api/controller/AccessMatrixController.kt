@@ -66,6 +66,7 @@ class AccessMatrixController(
     @PostMapping("/sync-rights")
     @Operation(summary = "Sync rights from xWiki", description = "Fetches permissions from xWiki and stores them in the Access Matrix")
     @PreAuthorize("hasRole('manage_connectors')")
+    @org.springframework.transaction.annotation.Transactional
     fun syncRights(@RequestBody body: Map<String, String>): ResponseEntity<Map<String, Any>> {
         val baseUrl = body["baseUrl"] ?: throw IllegalArgumentException("Missing baseUrl")
         val username = body["username"] ?: throw IllegalArgumentException("Missing username")
