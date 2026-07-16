@@ -214,14 +214,31 @@ class XWikiClient(
 
     /**
      * Fetch global wiki-level rights.
+     * xWiki stores wiki-level rights in XWiki.XWikiPreferences page.
      */
     fun getGlobalRights(wiki: String = "xwiki"): List<XWikiRight> {
         val rights = mutableListOf<XWikiRight>()
 
-        val response = get("/rest/wikis/$wiki/spaces/XWiki/pages/WebPreferences/objects/XWiki.XWikiGlobalRights")
+        // Wiki-level rights are in XWikiPreferences (this is where the Rights admin page stores them)
+        val response = get("/rest/wikis/$wiki/spaces/XWiki/pages/XWikiPreferences/objects/XWiki.XWikiGlobalRights")
         if (response.statusCode() == 200 && !response.body().contains("<objects xmlns=\"http://www.xwiki.org\"/>")) {
             val numberRegex = "<number>(\\d+)</number>".toRegex()
             val numbers = numberRegex.findAll(response.body()).map { it.groupValues[1].toInt() }.toList()
+
+            numbers.forEach { num ->
+                val detailResponse = get("/rest/wikis/$wiki/spaces/XWiki/pages/XWikiPreferences/objects/XWiki.XWikiGlobalRights/$num")
+                if (detailResponse.statusCode() == 200) {
+                    val right = parseRightObject(detailResponse.body(), "(global)")
+                    if (right != null) rights.add(right)
+                }
+            }
+        }
+
+        // Also check WebPreferences (older location)
+        val response2 = get("/rest/wikis/$wiki/spaces/XWiki/pages/WebPreferences/objects/XWiki.XWikiGlobalRights")
+        if (response2.statusCode() == 200 && !response2.body().contains("<objects xmlns=\"http://www.xwiki.org\"/>")) {
+            val numberRegex = "<number>(\\d+)</number>".toRegex()
+            val numbers = numberRegex.findAll(response2.body()).map { it.groupValues[1].toInt() }.toList()
 
             numbers.forEach { num ->
                 val detailResponse = get("/rest/wikis/$wiki/spaces/XWiki/pages/WebPreferences/objects/XWiki.XWikiGlobalRights/$num")
