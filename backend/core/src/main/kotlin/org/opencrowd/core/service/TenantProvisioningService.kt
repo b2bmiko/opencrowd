@@ -74,7 +74,14 @@ class TenantProvisioningService(
     }
 
     private fun loadTenantMigration(): String {
-        val resource = ClassPathResource("db/tenant/V1__create_tenant_schema.sql")
-        return resource.inputStream.bufferedReader().readText()
+        val v1 = ClassPathResource("db/tenant/V1__create_tenant_schema.sql")
+        val v2 = ClassPathResource("db/tenant/V2__create_access_entries.sql")
+        val sb = StringBuilder()
+        sb.append(v1.inputStream.bufferedReader().readText())
+        sb.append("\n")
+        if (v2.exists()) {
+            sb.append(v2.inputStream.bufferedReader().readText())
+        }
+        return sb.toString()
     }
 }

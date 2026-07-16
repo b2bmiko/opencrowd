@@ -186,6 +186,90 @@ class XWikiClient(
     }
 
     /**
+     * Fetch rights/permissions for a specific space.
+     * Returns both XWikiRights (space-level) entries.
+     */
+    fun getSpaceRights(spaceName: String, wiki: String = "xwiki"): List<XWikiRight> {
+        val rights = mutableListOf<XWikiRight>()
+
+        // Fetch space-level rights
+        val response = get("/rest/wikis/$wiki/spaces/$spaceName/pages/WebPreferences/objects/XWiki.XWikiRights")
+        if (response.statusCode() == 200 && !response.body().contains("<objects xmlns=\"http://www.xwiki.org\"/>")) {
+            // Get the count of rights objects
+            val numberRegex = "<number>(\\d+)</number>".toRegex()
+            val numbers = numberRegex.findAll(response.body()).map { it.groupValues[1].toInt() }.toList()
+
+            numbers.forEach { num ->
+                val detailResponse = get("/rest/wikis/$wiki/spaces/$spaceName/pages/WebPreferences/objects/XWiki.XWikiRights/$num")
+                if (detailResponse.statusCode() == 200) {
+                    val right = parseRightObject(detailResponse.body(), spaceName)
+                    if (right != null) rights.add(right)
+                }
+            }
+        }
+
+        logger.info("Found ${rights.size} rights entries for space '$spaceName'")
+        return rights
+    }
+
+    /**
+     * Fetch global wiki-level rights.
+     */
+    fun getGlobalRights(wiki: String = "xwiki"): List<XWikiRight> {
+        val rights = mutableListOf<XWikiRight>()
+
+        val response = get("/rest/wikis/$wiki/spaces/XWiki/pages/WebPreferences/objects/XWiki.XWikiGlobalRights")
+        if (response.statusCode() == 200 && !response.body().contains("<objects xmlns=\"http://www.xwiki.org\"/>")) {
+            val numberRegex = "<number>(\\d+)</number>".toRegex()
+            val numbers = numberRegex.findAll(response.body()).map { it.groupValues[1].toInt() }.toList()
+
+            numbers.forEach { num ->
+                val detailResponse = get("/rest/wikis/$wiki/spaces/XWiki/pages/WebPreferences/objects/XWiki.XWikiGlobalRights/$num")
+                if (detailResponse.statusCode() == 200) {
+                    val right = parseRightObject(detailResponse.body(), "(global)")
+                    if (right != null) rights.add(right)
+                }
+            }
+        }
+
+        logger.info("Found ${rights.size} global rights entries")
+        return rights
+    }
+
+    private fun parseRightObject(xml: String, spaceName: String): XWikiRight? {
+        return try {
+            val usersValue = extractPropertyValue(xml, "users")
+            val groupsValue = extractPropertyValue(xml, "groups")
+            val levelsValue = extractPropertyValue(xml, "levels")
+            val allowValue = extractPropertyValue(xml, "allow")
+
+            if (levelsValue.isNullOrEmpty()) return null
+
+            val levels = levelsValue.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            val users = if (!usersValue.isNullOrEmpty()) usersValue.split(",").map { it.trim().removePrefix("XWiki.") }.filter { it.isNotEmpty() } else emptyList()
+            val groups = if (!groupsValue.isNullOrEmpty()) groupsValue.split(",").map { it.trim().removePrefix("XWiki.") }.filter { it.isNotEmpty() } else emptyList()
+            val allow = allowValue == "1"
+
+            XWikiRight(
+                spaceName = spaceName,
+                users = users,
+                groups = groups,
+                levels = levels,
+                allow = allow,
+            )
+        } catch (e: Exception) {
+            logger.error("Failed to parse right object: ${e.message}")
+            null
+        }
+    }
+
+    private fun extractPropertyValue(xml: String, propertyName: String): String? {
+        // Find the property block and extract its <value> element
+        val propertyRegex = """<property name="$propertyName"[^>]*>.*?<value>(.*?)</value>.*?</property>""".toRegex(RegexOption.DOT_MATCHES_ALL)
+        return propertyRegex.find(xml)?.groupValues?.get(1)?.trim()
+    }
+
+    /**
      * Fetch spaces (wikis/pages structure).
      */
     fun getSpaces(wiki: String = "xwiki"): List<XWikiSpace> {
@@ -319,4 +403,12 @@ data class XWikiGroup(
 data class XWikiSpace(
     val name: String,
     val url: String? = null,
+)
+
+data class XWikiRight(
+    val spaceName: String,
+    val users: List<String>,
+    val groups: List<String>,
+    val levels: List<String>,
+    val allow: Boolean,
 )
