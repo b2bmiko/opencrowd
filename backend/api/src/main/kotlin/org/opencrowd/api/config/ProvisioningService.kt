@@ -35,36 +35,45 @@ class ProvisioningService(
      */
     @EventListener
     fun onDomainEvent(event: DomainEvent) {
-        when (event) {
-            is UserCreated -> {
-                logger.info("[Provisioning] UserCreated event received for user ${event.username}")
-                // Set tenant context for the provisioning query
-                org.opencrowd.core.multitenancy.TenantContext.setTenantId(event.tenantId)
-                try {
-                    val user = userRepository.findById(event.userId).orElse(null)
-                    if (user != null) {
-                        onUserCreated(user)
-                    } else {
-                        logger.warn("[Provisioning] User ${event.userId} not found in DB")
-                    }
-                } finally {
-                    org.opencrowd.core.multitenancy.TenantContext.clear()
-                }
-            }
-            is UserStatusChanged -> {
-                if (event.newStatus == "DISABLED" || event.newStatus == "OFFBOARDED") {
+        try {
+            when (event) {
+                is UserCreated -> {
+                    logger.info("[Provisioning] UserCreated event received for user ${event.username}")
                     org.opencrowd.core.multitenancy.TenantContext.setTenantId(event.tenantId)
                     try {
                         val user = userRepository.findById(event.userId).orElse(null)
                         if (user != null) {
-                            onUserDisabled(user)
+                            // Skip provisioning for users imported FROM a connector (they already exist there)
+                            if (user.externalId != null && user.externalId!!.startsWith("xwiki:")) {
+                                logger.info("[Provisioning] Skipping — user '${user.username}' was imported from xWiki")
+                            } else {
+                                onUserCreated(user)
+                            }
+                        } else {
+                            logger.warn("[Provisioning] User ${event.userId} not found in DB")
                         }
                     } finally {
                         org.opencrowd.core.multitenancy.TenantContext.clear()
                     }
                 }
+                is UserStatusChanged -> {
+                    if (event.newStatus == "DISABLED" || event.newStatus == "OFFBOARDED") {
+                        org.opencrowd.core.multitenancy.TenantContext.setTenantId(event.tenantId)
+                        try {
+                            val user = userRepository.findById(event.userId).orElse(null)
+                            if (user != null) {
+                                onUserDisabled(user)
+                            }
+                        } finally {
+                            org.opencrowd.core.multitenancy.TenantContext.clear()
+                        }
+                    }
+                }
+                else -> { /* Other events don't trigger provisioning */ }
             }
-            else -> { /* Other events don't trigger provisioning */ }
+        } catch (e: Exception) {
+            // Never let provisioning errors roll back the original transaction
+            logger.error("[Provisioning] Error during provisioning (non-fatal): ${e.message}")
         }
     }
 
