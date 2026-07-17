@@ -12,6 +12,7 @@ import { GroupsPage } from '@/pages/Groups';
 import { GroupDetailPage } from '@/pages/GroupDetail';
 import { ApplicationsPage } from '@/pages/Applications';
 import { AccessMatrixPage } from '@/pages/AccessMatrix';
+import { AuditPage } from '@/pages/Audit';
 import { LoginPage } from '@/pages/Login';
 import { CallbackPage } from '@/pages/Callback';
 import './globals.css';
@@ -73,6 +74,8 @@ function AppRouter() {
         return { title: 'Applications', subtitle: 'Manage connected applications', component: <ApplicationsPage /> };
       case '/access-matrix':
         return { title: 'Access Matrix', subtitle: 'Unified cross-application permission view', component: <AccessMatrixPage /> };
+      case '/audit':
+        return { title: 'Audit', subtitle: 'Track all governance actions', component: <AuditPage /> };
       default:
         return { title: 'Dashboard', subtitle: 'Unified view of your governance landscape', component: <DashboardPage /> };
     }

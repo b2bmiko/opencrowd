@@ -159,6 +159,50 @@ class XWikiClient(
     }
 
     /**
+     * Add a permission right in xWiki for a user or group on a space.
+     * Creates or updates an XWikiRights object on the space's WebPreferences page.
+     */
+    fun addRight(spaceName: String, principalName: String, isGroup: Boolean, levels: List<String>, wiki: String = "xwiki"): Boolean {
+        return try {
+            val principal = "XWiki.$principalName"
+            val levelsStr = levels.joinToString(",")
+
+            val xmlBody = buildString {
+                append("""<object xmlns="http://www.xwiki.org">""")
+                append("<className>XWiki.XWikiRights</className>")
+                append("""<property name="levels"><value>$levelsStr</value></property>""")
+                if (isGroup) {
+                    append("""<property name="groups"><value>$principal</value></property>""")
+                    append("""<property name="users"><value></value></property>""")
+                } else {
+                    append("""<property name="users"><value>$principal</value></property>""")
+                    append("""<property name="groups"><value></value></property>""")
+                }
+                append("""<property name="allow"><value>1</value></property>""")
+                append("</object>")
+            }
+
+            val path = if (spaceName == "(global)") {
+                "/rest/wikis/$wiki/spaces/XWiki/pages/XWikiPreferences/objects"
+            } else {
+                "/rest/wikis/$wiki/spaces/$spaceName/pages/WebPreferences/objects"
+            }
+
+            val response = post(path, xmlBody)
+            if (response.statusCode() in 200..299) {
+                logger.info("Added right: $principalName → $levelsStr on $spaceName")
+                true
+            } else {
+                logger.error("Failed to add right: HTTP ${response.statusCode()} - ${response.body().take(200)}")
+                false
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to add right: ${e.message}")
+            false
+        }
+    }
+
+    /**
      * Fetch members of a specific group.
      */
     fun getGroupMembers(groupName: String, wiki: String = "xwiki"): List<String> {

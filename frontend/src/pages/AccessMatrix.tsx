@@ -105,6 +105,7 @@ export function AccessMatrixPage() {
   const filteredEntries = entries.filter((entry) => {
     if (activeTab === 'groups' && entry.principalType !== 'GROUP') return false;
     if (activeTab === 'users' && entry.principalType !== 'USER') return false;
+    if (activeTab === 'inspect') return true; // Inspect shows all, filtered by search
     if (selectedResource && entry.resourceName !== selectedResource) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -112,6 +113,11 @@ export function AccessMatrixPage() {
     }
     return true;
   });
+
+  // For inspect tab — filter by search matching principal name exactly
+  const inspectEntries = activeTab === 'inspect' && searchQuery
+    ? entries.filter(e => e.principalName.toLowerCase().includes(searchQuery.toLowerCase()))
+    : [];
 
   // Build matrix: rows = unique principals, columns = permissions
   const principalMap = new Map<string, Map<string, boolean>>();
@@ -265,6 +271,45 @@ export function AccessMatrixPage() {
           </div>
         )}
       </div>
+
+      {/* Inspect Permissions View */}
+      {activeTab === 'inspect' && (
+        <div className="rounded-lg border bg-card p-6">
+          <h3 className="font-semibold text-foreground">Inspect: {searchQuery || 'Type a name to inspect'}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Shows all effective permissions for a user or group across all applications
+          </p>
+          {inspectEntries.length > 0 ? (
+            <div className="mt-4 space-y-4">
+              {/* Group by resource */}
+              {[...new Set(inspectEntries.map(e => `${e.application}:${e.resourceName}`))].map(key => {
+                const [app, resource] = key.split(':');
+                const resourceEntries = inspectEntries.filter(e => e.application === app && e.resourceName === resource);
+                return (
+                  <div key={key} className="rounded-md border p-4">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{app}</Badge>
+                      <span className="font-medium text-foreground">{resource}</span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {resourceEntries.map(e => (
+                        <Badge key={e.id} variant={e.allow ? 'success' : 'destructive'}>
+                          {e.permission}
+                        </Badge>
+                      ))}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Source: {resourceEntries[0]?.source} • Synced: {new Date(resourceEntries[0]?.syncedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : searchQuery ? (
+            <p className="mt-4 text-sm text-muted-foreground">No permissions found for "{searchQuery}"</p>
+          ) : null}
+        </div>
+      )}
 
       {/* Summary */}
       {entries.length > 0 && (

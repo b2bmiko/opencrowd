@@ -2,6 +2,8 @@ package org.opencrowd.api.controller
 
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import org.opencrowd.connectors.xwiki.XWikiClient
 import org.opencrowd.core.entity.AccessEntry
 import org.opencrowd.core.entity.PrincipalType
@@ -76,6 +78,9 @@ class AccessMatrixController(
         val resourceType = body["resourceType"] ?: "wiki"
         val action = body["action"] ?: "grant" // "grant" or "revoke"
 
+        // Also write back to the connected app
+        val writeBackResult = writeBackToApp(application, principalName, principalType, permission, resourceName, action)
+
         if (action == "revoke") {
             // Remove from DB
             val entries = accessEntryRepository.findByPrincipalName(principalName)
@@ -86,6 +91,7 @@ class AccessMatrixController(
                 "success" to true,
                 "action" to "revoked",
                 "message" to "Permission '$permission' revoked from '$principalName'",
+                "writeBack" to writeBackResult,
             ))
         } else {
             // Add to DB
@@ -106,7 +112,39 @@ class AccessMatrixController(
                 "success" to true,
                 "action" to "granted",
                 "message" to "Permission '$permission' granted to '$principalName'",
+                "writeBack" to writeBackResult,
             ))
+        }
+    }
+
+    private fun writeBackToApp(application: String, principalName: String, principalType: String, permission: String, resourceName: String, action: String): String {
+        if (application != "xwiki") return "write-back not implemented for $application"
+
+        // Get stored xWiki credentials from connector
+        val connectors = connectorService.findAll().filter { it.connectorType == "xwiki" && it.config != "{}" }
+        if (connectors.isEmpty()) return "no xwiki connector with credentials found"
+
+        val connector = connectors.first()
+        return try {
+            val configMap = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
+                .readValue<Map<String, String>>(connector.config)
+            val baseUrl = configMap["baseUrl"] ?: return "missing baseUrl in connector config"
+            val username = configMap["username"] ?: return "missing username"
+            val password = configMap["password"] ?: return "missing password"
+
+            val client = org.opencrowd.connectors.xwiki.XWikiClient(baseUrl.trimEnd('/'), username, password)
+
+            if (action == "grant") {
+                val spaceName = if (resourceName == "(global)") "(global)" else resourceName
+                val isGroup = principalType == "GROUP"
+                val success = client.addRight(spaceName, principalName, isGroup, listOf(permission))
+                if (success) "written to xWiki" else "xWiki write failed"
+            } else {
+                // Revoke is more complex in xWiki (need to find and remove the specific object)
+                "revoke write-back not yet implemented"
+            }
+        } catch (e: Exception) {
+            "write-back error: ${e.message}"
         }
     }
 
