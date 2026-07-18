@@ -59,14 +59,28 @@ class ConnectorSyncController(
         var skipped = 0
         var errors = 0
         val importedUsers = mutableListOf<String>()
+        val failedUsers = mutableListOf<String>()
 
         xwikiUsers.forEach { xwikiUser ->
             try {
+                // Skip system/bot users
+                if (xwikiUser.username in listOf("XWikiGuest", "superadmin", "XWikiRobot", "XWikiDefaultSkin")) {
+                    skipped++
+                    return@forEach
+                }
+
                 val existing = userService.findByUsername(xwikiUser.username)
                 if (existing != null) {
                     // Update existing user with fresh details from xWiki
                     var changed = false
-                    if (xwikiUser.email != null && xwikiUser.email != existing.email) { existing.email = xwikiUser.email; changed = true }
+                    if (xwikiUser.email != null && xwikiUser.email != existing.email) {
+                        // Only update email if it won't conflict
+                        val emailOwner = userService.findByEmail(xwikiUser.email)
+                        if (emailOwner == null || emailOwner.id == existing.id) {
+                            existing.email = xwikiUser.email
+                            changed = true
+                        }
+                    }
                     if (xwikiUser.firstName != null && xwikiUser.firstName != existing.firstName) { existing.firstName = xwikiUser.firstName; changed = true }
                     if (xwikiUser.lastName != null && xwikiUser.lastName != existing.lastName) { existing.lastName = xwikiUser.lastName; changed = true }
                     if (changed) {
@@ -79,10 +93,17 @@ class ConnectorSyncController(
                     return@forEach
                 }
 
+                // Check email uniqueness before creating
+                val email = xwikiUser.email?.takeIf { it.isNotBlank() } ?: "${xwikiUser.username}@imported.local"
+                val emailExists = userService.findByEmail(email)
+                val finalEmail = if (emailExists != null) "${xwikiUser.username}@imported.local" else email
+                // If even the fallback email conflicts (shouldn't happen), make it truly unique
+                val safeEmail = if (userService.findByEmail(finalEmail) != null) "${xwikiUser.username}.${System.currentTimeMillis() % 10000}@imported.local" else finalEmail
+
                 val displayName = listOfNotNull(xwikiUser.firstName, xwikiUser.lastName).joinToString(" ").ifEmpty { xwikiUser.username }
                 val user = User(
                     username = xwikiUser.username,
-                    email = xwikiUser.email ?: "${xwikiUser.username}@imported.local",
+                    email = safeEmail,
                     firstName = xwikiUser.firstName,
                     lastName = xwikiUser.lastName,
                     displayName = displayName,
@@ -94,6 +115,7 @@ class ConnectorSyncController(
                 importedUsers.add(xwikiUser.username)
             } catch (e: Exception) {
                 logger.warn("Failed to import user ${xwikiUser.username}: ${e.message}")
+                failedUsers.add("${xwikiUser.username}: ${e.message?.take(80)}")
                 errors++
             }
         }
@@ -108,6 +130,7 @@ class ConnectorSyncController(
             "errors" to errors,
             "total" to xwikiUsers.size,
             "importedUsers" to importedUsers,
+            "failedUsers" to failedUsers,
         ))
     }
 
@@ -266,14 +289,26 @@ class ConnectorSyncController(
         var usersCreated = 0
         var usersUpdated = 0
         var usersErrors = 0
+        val failedUsers = mutableListOf<String>()
 
         xwikiUsers.forEach { xwikiUser ->
             try {
+                // Skip system/bot users
+                if (xwikiUser.username in listOf("XWikiGuest", "superadmin", "XWikiRobot", "XWikiDefaultSkin")) {
+                    return@forEach
+                }
+
                 val existing = userService.findByUsername(xwikiUser.username)
                 if (existing != null) {
                     // Update with fresh data
                     var changed = false
-                    if (xwikiUser.email != null && xwikiUser.email != existing.email) { existing.email = xwikiUser.email; changed = true }
+                    if (xwikiUser.email != null && xwikiUser.email != existing.email) {
+                        val emailOwner = userService.findByEmail(xwikiUser.email)
+                        if (emailOwner == null || emailOwner.id == existing.id) {
+                            existing.email = xwikiUser.email
+                            changed = true
+                        }
+                    }
                     if (xwikiUser.firstName != null && xwikiUser.firstName != existing.firstName) { existing.firstName = xwikiUser.firstName; changed = true }
                     if (xwikiUser.lastName != null && xwikiUser.lastName != existing.lastName) { existing.lastName = xwikiUser.lastName; changed = true }
                     if (changed) {
@@ -282,10 +317,15 @@ class ConnectorSyncController(
                         usersUpdated++
                     }
                 } else {
+                    val email = xwikiUser.email?.takeIf { it.isNotBlank() } ?: "${xwikiUser.username}@imported.local"
+                    val emailExists = userService.findByEmail(email)
+                    val finalEmail = if (emailExists != null) "${xwikiUser.username}@imported.local" else email
+                    val safeEmail = if (userService.findByEmail(finalEmail) != null) "${xwikiUser.username}.${System.currentTimeMillis() % 10000}@imported.local" else finalEmail
+
                     val displayName = listOfNotNull(xwikiUser.firstName, xwikiUser.lastName).joinToString(" ").ifEmpty { xwikiUser.username }
                     val user = User(
                         username = xwikiUser.username,
-                        email = xwikiUser.email ?: "${xwikiUser.username}@imported.local",
+                        email = safeEmail,
                         firstName = xwikiUser.firstName,
                         lastName = xwikiUser.lastName,
                         displayName = displayName,
@@ -297,6 +337,7 @@ class ConnectorSyncController(
                 }
             } catch (e: Exception) {
                 logger.warn("[SyncAll] User import error for ${xwikiUser.username}: ${e.message}")
+                failedUsers.add("${xwikiUser.username}: ${e.message?.take(80)}")
                 usersErrors++
             }
         }
@@ -362,6 +403,7 @@ class ConnectorSyncController(
                 "created" to usersCreated,
                 "updated" to usersUpdated,
                 "errors" to usersErrors,
+                "failed" to failedUsers,
             ),
             "groups" to mapOf(
                 "total" to xwikiGroups.size,
