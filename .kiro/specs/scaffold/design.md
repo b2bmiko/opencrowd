@@ -466,9 +466,67 @@ The `ConnectorRegistry` (in `core` module) collects all `Connector` beans and ex
 
 ---
 
-## 6. Database Design
+## 6. Connector Connectivity Architecture
 
-### 6.1 Public Schema (Tenant Registry)
+### 6.1 How OpenCrowd Connects to External Applications
+
+OpenCrowd communicates with connected applications (xWiki, OpenProject, Nextcloud, etc.) via their **REST APIs over HTTP/HTTPS**. The connection is URL-based and credential-based — no special networking, agents, or tunnels required.
+
+```
+┌──────────────┐         HTTPS / REST API         ┌──────────────────┐
+│              │ ◄──────────────────────────────► │                  │
+│  OpenCrowd   │    Basic Auth / Bearer Token      │   xWiki          │
+│  Backend     │    (stored per connector)         │   OpenProject    │
+│              │                                   │   Nextcloud      │
+└──────────────┘                                   └──────────────────┘
+     Can be anywhere:                                 Can be anywhere:
+     - Cloud VM                                       - Same network
+     - Docker container                               - Different cloud
+     - On-premise server                              - Public internet
+     - Developer laptop                               - Behind VPN
+```
+
+**Connection model:**
+- Each connector stores a `baseUrl` (e.g., `https://xwiki.company.com`) and credentials
+- OpenCrowd initiates all connections **outbound** — no inbound ports needed on the target app
+- Credentials are stored encrypted in the database and used per-request
+- Works identically whether both systems are on the same LAN, different clouds, or across the public internet
+
+### 6.2 Deployment Scenarios for Open-Source Users
+
+| Scenario | OpenCrowd | Target Apps | Network |
+|----------|-----------|-------------|---------|
+| **All local** | `localhost:8080` | `localhost:8081` (xWiki) | Same machine |
+| **Docker Compose** | `opencrowd:8080` | `xwiki:8080` (same compose network) | Docker bridge |
+| **Same LAN** | `192.168.1.10:8080` | `192.168.1.20:8080` (xWiki server) | LAN / private |
+| **Cloud + On-prem** | Cloud VM | `vpn.company.com:443` (behind firewall) | VPN or public |
+| **Full cloud** | AWS/GCP VM | `xwiki.company.io` (public URL) | Internet |
+
+### 6.3 What Open-Source Users Do
+
+1. **Install OpenCrowd** (Docker Compose, Helm, or manual)
+2. **Go to Applications** → "Connect Application"
+3. **Enter the target app's URL** (wherever it's reachable from OpenCrowd)
+4. **Enter credentials** (admin user with API access)
+5. **Test Connection** → verifies reachability and auth
+6. **Sync** → pulls users, groups, and permissions
+
+No special agent, SDK installation, or webhook configuration is needed on the target application. OpenCrowd uses only standard REST APIs that these platforms already expose.
+
+### 6.4 Security Considerations for Connectivity
+
+- **HTTPS strongly recommended** in production (encrypt credentials in transit)
+- **API-level credentials** — use a dedicated service account, not an admin's personal credentials
+- **Network policies** — in Kubernetes/Docker, restrict outbound to known target IPs if desired
+- **Credential rotation** — re-test connection after rotating credentials in the target app
+- **Firewall rules** — OpenCrowd only needs outbound HTTP/HTTPS to the target app's API port
+
+
+---
+
+## 7. Database Design
+
+### 7.1 Public Schema (Tenant Registry)
 
 ```sql
 -- Tenant management (shared across all tenants)
@@ -492,7 +550,7 @@ CREATE TABLE public.platform_admins (
 );
 ```
 
-### 6.2 Tenant Schema Template
+### 7.2 Tenant Schema Template
 
 ```sql
 -- Applied per tenant: CREATE SCHEMA tenant_<slug>; SET search_path TO tenant_<slug>;
@@ -613,9 +671,9 @@ CREATE INDEX idx_connectors_type ON connectors(connector_type);
 
 ---
 
-## 7. Infrastructure Design
+## 8. Infrastructure Design
 
-### 7.1 Local Development Stack (Docker Compose)
+### 8.1 Local Development Stack (Docker Compose)
 
 ```yaml
 services:
@@ -666,7 +724,7 @@ services:
     depends_on: [backend]
 ```
 
-### 7.2 Keycloak Realm Configuration
+### 8.2 Keycloak Realm Configuration
 
 Pre-configured realm (`opencrowd`) with:
 
@@ -681,7 +739,7 @@ Pre-configured realm (`opencrowd`) with:
   - `tenant-admin@acme.local` / `admin` (tenant_admin, tenant=acme)
   - `user@acme.local` / `user` (user, tenant=acme)
 
-### 7.3 Backend Dockerfile (Multi-stage)
+### 8.3 Backend Dockerfile (Multi-stage)
 
 ```dockerfile
 # Stage 1: Build
@@ -704,7 +762,7 @@ EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
 
-### 7.4 CI Pipeline (GitHub Actions)
+### 8.4 CI Pipeline (GitHub Actions)
 
 ```yaml
 name: CI
@@ -745,9 +803,9 @@ jobs:
 
 ---
 
-## 8. Security Design
+## 9. Security Design
 
-### 8.1 Defense in Depth
+### 9.1 Defense in Depth
 
 | Layer | Mechanism |
 |-------|-----------|
@@ -759,7 +817,7 @@ jobs:
 | Audit | All mutations logged with actor, timestamp, correlation ID |
 | Input | Bean Validation (Jakarta), Zod schemas (frontend) |
 
-### 8.2 Sensitive Data Handling
+### 9.2 Sensitive Data Handling
 
 - Connector credentials stored encrypted in DB (AES-256-GCM, key from env)
 - Passwords never stored in OpenCrowd (delegated to Keycloak)
@@ -768,7 +826,7 @@ jobs:
 
 ---
 
-## 9. Technology Decisions & Rationale
+## 10. Technology Decisions & Rationale
 
 | Decision | Choice | Alternatives Considered | Rationale |
 |----------|--------|------------------------|-----------|
@@ -788,7 +846,7 @@ jobs:
 
 ---
 
-## 10. Risks & Mitigations
+## 11. Risks & Mitigations
 
 | Risk | Impact | Mitigation |
 |------|--------|-----------|
