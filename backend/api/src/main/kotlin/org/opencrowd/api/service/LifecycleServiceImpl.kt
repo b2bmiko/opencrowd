@@ -1,11 +1,9 @@
-package org.opencrowd.core.service
+package org.opencrowd.api.service
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import org.opencrowd.connectors.sdk.AuthConfig
-import org.opencrowd.connectors.sdk.ConnectorConfig
 import org.opencrowd.connectors.sdk.ConnectorRegistry
-import org.opencrowd.connectors.sdk.ConnectorResult
+import org.opencrowd.connectors.xwiki.XWikiClient
 import org.opencrowd.core.entity.ConnectorStatus
 import org.opencrowd.core.entity.User
 import org.opencrowd.core.entity.UserStatus
@@ -13,11 +11,10 @@ import org.opencrowd.core.event.DomainEventPublisher
 import org.opencrowd.core.event.UserCreated
 import org.opencrowd.core.event.UserStatusChanged
 import org.opencrowd.core.multitenancy.TenantContext
-import org.opencrowd.connectors.xwiki.XWikiClient
+import org.opencrowd.core.service.*
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import kotlinx.coroutines.runBlocking
 import java.util.UUID
 
 @Service
@@ -37,13 +34,11 @@ class LifecycleServiceImpl(
         val correlationId = UUID.randomUUID().toString()
         val errors = mutableListOf<String>()
 
-        // 1. Create the user
         val createdUser = userService.create(user)
         val userId = createdUser.id!!
 
         logger.info("[JML:Joiner] User created: ${createdUser.username} (${createdUser.id})")
 
-        // 2. Assign to groups
         val assignedGroups = mutableListOf<String>()
         groupIds.forEach { groupId ->
             try {
@@ -56,13 +51,11 @@ class LifecycleServiceImpl(
             }
         }
 
-        // 3. Provision to connected applications
         val provisioningResults = provisionUser(createdUser, connectorIds)
         provisioningResults.filter { it.action == "failed" }.forEach {
             errors.add("${it.connectorName}: ${it.message}")
         }
 
-        // 4. Publish event
         eventPublisher.publish(
             UserCreated(
                 tenantId = TenantContext.getTenantId() ?: "default",
@@ -101,7 +94,6 @@ class LifecycleServiceImpl(
         val previousStatus = user.status.name
         logger.info("[JML:Leaver] Starting offboarding for: ${user.username} (status: $previousStatus)")
 
-        // 1. Remove from all groups
         val removedGroups = mutableListOf<String>()
         val allGroups = groupService.findAll(org.springframework.data.domain.PageRequest.of(0, 500))
         allGroups.content.forEach { group ->
@@ -116,16 +108,13 @@ class LifecycleServiceImpl(
             }
         }
 
-        // 2. Deprovision from connected applications
         val deprovisioningResults = deprovisionUser(user, connectorIds)
         deprovisioningResults.filter { it.action == "failed" }.forEach {
             errors.add("${it.connectorName}: ${it.message}")
         }
 
-        // 3. Set user status to OFFBOARDED
         userService.changeStatus(userId, UserStatus.OFFBOARDED)
 
-        // 4. Publish event
         eventPublisher.publish(
             UserStatusChanged(
                 tenantId = TenantContext.getTenantId() ?: "default",
@@ -164,7 +153,6 @@ class LifecycleServiceImpl(
         val user = userService.findById(userId)
             ?: throw NoSuchElementException("User not found: $userId")
 
-        // Find all groups this user belongs to
         val groupNames = mutableListOf<String>()
         val allGroups = groupService.findAll(org.springframework.data.domain.PageRequest.of(0, 500))
         allGroups.content.forEach { group ->
@@ -193,10 +181,8 @@ class LifecycleServiceImpl(
             throw IllegalStateException("User ${user.username} is not offboarded/disabled (status: ${user.status})")
         }
 
-        // Re-activate
         userService.changeStatus(userId, UserStatus.ACTIVE)
 
-        // Assign groups
         val assignedGroups = mutableListOf<String>()
         val errors = mutableListOf<String>()
         groupIds.forEach { groupId ->
@@ -209,7 +195,6 @@ class LifecycleServiceImpl(
             }
         }
 
-        // Re-provision
         val provisioningResults = provisionUser(user, null)
         provisioningResults.filter { it.action == "failed" }.forEach {
             errors.add("${it.connectorName}: ${it.message}")
@@ -229,113 +214,50 @@ class LifecycleServiceImpl(
 
     private fun provisionUser(user: User, connectorIds: List<UUID>?): List<ProvisioningResult> {
         val connectors = getTargetConnectors(connectorIds)
-        val results = mutableListOf<ProvisioningResult>()
-
-        connectors.forEach { dbConnector ->
+        return connectors.map { dbConnector ->
             try {
-                val result = when (dbConnector.connectorType) {
+                when (dbConnector.connectorType) {
                     "xwiki" -> provisionToXWiki(user, dbConnector)
-                    else -> ProvisioningResult(
-                        connectorId = dbConnector.id!!,
-                        connectorName = dbConnector.name,
-                        connectorType = dbConnector.connectorType,
-                        action = "skipped",
-                        message = "Provisioning not implemented for ${dbConnector.connectorType}",
-                    )
+                    else -> ProvisioningResult(dbConnector.id!!, dbConnector.name, dbConnector.connectorType, "skipped", "Not implemented for ${dbConnector.connectorType}")
                 }
-                results.add(result)
             } catch (e: Exception) {
-                results.add(ProvisioningResult(
-                    connectorId = dbConnector.id!!,
-                    connectorName = dbConnector.name,
-                    connectorType = dbConnector.connectorType,
-                    action = "failed",
-                    message = e.message,
-                ))
+                ProvisioningResult(dbConnector.id!!, dbConnector.name, dbConnector.connectorType, "failed", e.message)
             }
         }
-
-        return results
     }
 
     private fun deprovisionUser(user: User, connectorIds: List<UUID>?): List<ProvisioningResult> {
         val connectors = getTargetConnectors(connectorIds)
-        val results = mutableListOf<ProvisioningResult>()
-
-        connectors.forEach { dbConnector ->
+        return connectors.map { dbConnector ->
             try {
-                val result = when (dbConnector.connectorType) {
+                when (dbConnector.connectorType) {
                     "xwiki" -> deprovisionFromXWiki(user, dbConnector)
-                    else -> ProvisioningResult(
-                        connectorId = dbConnector.id!!,
-                        connectorName = dbConnector.name,
-                        connectorType = dbConnector.connectorType,
-                        action = "skipped",
-                        message = "Deprovisioning not implemented for ${dbConnector.connectorType}",
-                    )
+                    else -> ProvisioningResult(dbConnector.id!!, dbConnector.name, dbConnector.connectorType, "skipped", "Not implemented for ${dbConnector.connectorType}")
                 }
-                results.add(result)
             } catch (e: Exception) {
-                results.add(ProvisioningResult(
-                    connectorId = dbConnector.id!!,
-                    connectorName = dbConnector.name,
-                    connectorType = dbConnector.connectorType,
-                    action = "failed",
-                    message = e.message,
-                ))
+                ProvisioningResult(dbConnector.id!!, dbConnector.name, dbConnector.connectorType, "failed", e.message)
             }
         }
-
-        return results
     }
 
     private fun provisionToXWiki(user: User, dbConnector: org.opencrowd.core.entity.Connector): ProvisioningResult {
         val client = getXWikiClient(dbConnector)
-            ?: return ProvisioningResult(
-                connectorId = dbConnector.id!!,
-                connectorName = dbConnector.name,
-                connectorType = "xwiki",
-                action = "failed",
-                message = "No credentials configured for this connector",
-            )
+            ?: return ProvisioningResult(dbConnector.id!!, dbConnector.name, "xwiki", "failed", "No credentials configured")
 
-        val success = client.createUser(
-            username = user.username,
-            email = user.email,
-            firstName = user.firstName,
-            lastName = user.lastName,
-            password = null, // Users authenticate via SSO, no xWiki password needed
-        )
-
-        return ProvisioningResult(
-            connectorId = dbConnector.id!!,
-            connectorName = dbConnector.name,
-            connectorType = "xwiki",
-            action = if (success) "provisioned" else "failed",
-            message = if (success) "User created in xWiki" else "Failed to create user in xWiki",
-        )
+        val success = client.createUser(user.username, user.email, user.firstName, user.lastName, null)
+        return ProvisioningResult(dbConnector.id!!, dbConnector.name, "xwiki",
+            if (success) "provisioned" else "failed",
+            if (success) "User created in xWiki" else "Failed to create user in xWiki")
     }
 
     private fun deprovisionFromXWiki(user: User, dbConnector: org.opencrowd.core.entity.Connector): ProvisioningResult {
         val client = getXWikiClient(dbConnector)
-            ?: return ProvisioningResult(
-                connectorId = dbConnector.id!!,
-                connectorName = dbConnector.name,
-                connectorType = "xwiki",
-                action = "failed",
-                message = "No credentials configured for this connector",
-            )
+            ?: return ProvisioningResult(dbConnector.id!!, dbConnector.name, "xwiki", "failed", "No credentials configured")
 
-        // Disable the user in xWiki by setting active=0 on their XWikiUsers object
         val success = client.disableUser(user.username)
-
-        return ProvisioningResult(
-            connectorId = dbConnector.id!!,
-            connectorName = dbConnector.name,
-            connectorType = "xwiki",
-            action = if (success) "deprovisioned" else "failed",
-            message = if (success) "User disabled in xWiki" else "Failed to disable user in xWiki",
-        )
+        return ProvisioningResult(dbConnector.id!!, dbConnector.name, "xwiki",
+            if (success) "deprovisioned" else "failed",
+            if (success) "User disabled in xWiki" else "Failed to disable user in xWiki")
     }
 
     private fun getXWikiClient(dbConnector: org.opencrowd.core.entity.Connector): XWikiClient? {
@@ -355,11 +277,6 @@ class LifecycleServiceImpl(
     private fun getTargetConnectors(connectorIds: List<UUID>?): List<org.opencrowd.core.entity.Connector> {
         val allConnectors = connectorService.findAll()
         val connected = allConnectors.filter { it.status == ConnectorStatus.CONNECTED }
-
-        return if (connectorIds != null) {
-            connected.filter { it.id in connectorIds }
-        } else {
-            connected
-        }
+        return if (connectorIds != null) connected.filter { it.id in connectorIds } else connected
     }
 }
