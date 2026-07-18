@@ -261,7 +261,9 @@ function SyncDialog({ connectorId, connectorName, onClose, onSuccess }: { connec
       const response = await apiClient.post(`/connectors/${connectorId}/sync-all`, form);
       setResult(response.data);
     } catch (e: unknown) {
-      setResult({ success: false, error: 'Sync failed — check connection details' });
+      const msg = e && typeof e === 'object' && 'message' in e ? (e as { message: string }).message : 'Unknown error';
+      const status = e && typeof e === 'object' && 'status' in e ? (e as { status: number }).status : 0;
+      setResult({ success: false, error: status === 404 ? 'Connector not found — try refreshing the page' : `Sync failed: ${msg}` });
     } finally {
       setIsSyncing(false);
     }
