@@ -140,8 +140,10 @@ class AccessMatrixController(
                 val success = client.addRight(spaceName, principalName, isGroup, listOf(permission))
                 if (success) "written to xWiki" else "xWiki write failed"
             } else {
-                // Revoke is more complex in xWiki (need to find and remove the specific object)
-                "revoke write-back not yet implemented"
+                val spaceName = if (resourceName == "(global)") "(global)" else resourceName
+                val isGroup = principalType == "GROUP"
+                val success = client.removeRight(spaceName, principalName, isGroup, listOf(permission))
+                if (success) "revoked from xWiki" else "xWiki revoke failed"
             }
         } catch (e: Exception) {
             "write-back error: ${e.message}"
@@ -208,14 +210,13 @@ class AccessMatrixController(
         // 2. Fetch space-level rights for key spaces
         val spaces = xwikiClient.getSpaces()
         val relevantSpaces = spaces.filter { space ->
-            // Skip system/internal spaces
+            // Skip system/internal spaces but keep all user-created spaces (including nested ones)
             !space.name.startsWith("Help") &&
             !space.name.startsWith("Menu") &&
             !space.name.startsWith("Sandbox") &&
             !space.name.startsWith("XWikiCrowd") &&
             space.name != "XWiki" &&
-            space.name != "Main" &&
-            !space.name.contains(".")
+            space.name != "Main"
         }
 
         relevantSpaces.forEach { space ->
@@ -258,6 +259,31 @@ class AccessMatrixController(
             }
         }
 
+        // 3. Ensure all xWiki groups appear in the matrix (even without explicit rights)
+        // This makes them visible in the Groups tab so admins can assign permissions
+        val allGroups = xwikiClient.getGroups()
+        val existingGroupNames = accessEntryRepository.findByApplication("xwiki")
+            .filter { it.principalType == PrincipalType.GROUP }
+            .map { it.principalName }
+            .toSet()
+
+        allGroups.forEach { group ->
+            if (group.name !in existingGroupNames) {
+                accessEntryRepository.save(AccessEntry(
+                    principalType = PrincipalType.GROUP,
+                    principalName = group.name,
+                    application = "xwiki",
+                    resourceType = "wiki",
+                    resourceName = "(global)",
+                    permission = "(none)",
+                    allow = false,
+                    source = "synced",
+                    syncedAt = Instant.now(),
+                ))
+                entriesCreated++
+            }
+        }
+
         logger.info("Access Matrix sync complete: $entriesCreated entries created")
 
         return ResponseEntity.ok(mapOf(
@@ -265,6 +291,7 @@ class AccessMatrixController(
             "entriesCreated" to entriesCreated,
             "globalRights" to globalRights.size,
             "spacesScanned" to relevantSpaces.size,
+            "groupsDiscovered" to allGroups.size,
         ))
     }
 }

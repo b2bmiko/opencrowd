@@ -203,6 +203,70 @@ class XWikiClient(
     }
 
     /**
+     * Remove a permission right in xWiki for a user or group on a space.
+     * Finds the matching XWikiRights object and deletes it.
+     */
+    fun removeRight(spaceName: String, principalName: String, isGroup: Boolean, levels: List<String>, wiki: String = "xwiki"): Boolean {
+        return try {
+            val principal = "XWiki.$principalName"
+
+            // Determine the correct path based on global vs space-level
+            val basePath = if (spaceName == "(global)") {
+                "/rest/wikis/$wiki/spaces/XWiki/pages/XWikiPreferences/objects/XWiki.XWikiGlobalRights"
+            } else {
+                "/rest/wikis/$wiki/spaces/$spaceName/pages/WebPreferences/objects/XWiki.XWikiRights"
+            }
+
+            // List all rights objects to find the matching one
+            val listResponse = get(basePath)
+            if (listResponse.statusCode() != 200) {
+                logger.error("Failed to list rights for removal: HTTP ${listResponse.statusCode()}")
+                return false
+            }
+
+            val body = listResponse.body()
+            val numberRegex = "<number>(\\d+)</number>".toRegex()
+            val numbers = numberRegex.findAll(body).map { it.groupValues[1].toInt() }.toList()
+
+            // Check each rights object to find the one matching our criteria
+            for (num in numbers) {
+                val detailResponse = get("$basePath/$num")
+                if (detailResponse.statusCode() != 200) continue
+
+                val detailBody = detailResponse.body()
+                val usersValue = extractPropertyValue(detailBody, "users") ?: ""
+                val groupsValue = extractPropertyValue(detailBody, "groups") ?: ""
+                val levelsValue = extractPropertyValue(detailBody, "levels") ?: ""
+
+                val currentLevels = levelsValue.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                val matchesPrincipal = if (isGroup) {
+                    groupsValue.contains(principalName) || groupsValue.contains(principal)
+                } else {
+                    usersValue.contains(principalName) || usersValue.contains(principal)
+                }
+                val matchesLevel = levels.any { it in currentLevels }
+
+                if (matchesPrincipal && matchesLevel) {
+                    val deleteResponse = delete("$basePath/$num")
+                    if (deleteResponse.statusCode() in 200..299) {
+                        logger.info("Removed right #$num: $principalName → ${levels.joinToString(",")} on $spaceName")
+                        return true
+                    } else {
+                        logger.error("Failed to delete right #$num: HTTP ${deleteResponse.statusCode()}")
+                        return false
+                    }
+                }
+            }
+
+            logger.warn("No matching right found to remove: $principalName → ${levels.joinToString(",")} on $spaceName")
+            false
+        } catch (e: Exception) {
+            logger.error("Failed to remove right: ${e.message}")
+            false
+        }
+    }
+
+    /**
      * Fetch members of a specific group.
      */
     fun getGroupMembers(groupName: String, wiki: String = "xwiki"): List<String> {
@@ -382,6 +446,19 @@ class XWikiClient(
             .header("Accept", "application/xml")
             .timeout(Duration.ofSeconds(30))
             .POST(HttpRequest.BodyPublishers.ofString(xmlBody))
+            .build()
+
+        return httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+    }
+
+    private fun delete(path: String): HttpResponse<String> {
+        val url = if (path.startsWith("http")) path else "$baseUrl$path"
+        val request = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("Authorization", authHeader)
+            .header("Accept", "application/xml")
+            .timeout(Duration.ofSeconds(30))
+            .DELETE()
             .build()
 
         return httpClient.send(request, HttpResponse.BodyHandlers.ofString())
