@@ -72,20 +72,27 @@ class ConnectorSyncController(
                 val existing = userService.findByUsername(xwikiUser.username)
                 if (existing != null) {
                     // Update existing user with fresh details from xWiki
-                    var changed = false
-                    if (xwikiUser.email != null && xwikiUser.email != existing.email) {
-                        // Only update email if it won't conflict
-                        val emailOwner = userService.findByEmail(xwikiUser.email)
-                        if (emailOwner == null || emailOwner.id == existing.id) {
-                            existing.email = xwikiUser.email
-                            changed = true
+                    val newEmail = xwikiUser.email?.takeIf { it.isNotBlank() }
+                    val newFirstName = xwikiUser.firstName?.takeIf { it.isNotBlank() }
+                    val newLastName = xwikiUser.lastName?.takeIf { it.isNotBlank() }
+
+                    val emailSafe = if (newEmail != null && newEmail != existing.email) {
+                        val emailOwner = userService.findByEmail(newEmail)
+                        if (emailOwner == null || emailOwner.id == existing.id) newEmail else null
+                    } else null
+
+                    val hasChanges = emailSafe != null ||
+                        (newFirstName != null && newFirstName != existing.firstName) ||
+                        (newLastName != null && newLastName != existing.lastName)
+
+                    if (hasChanges) {
+                        userService.update(existing.id!!) { user ->
+                            if (emailSafe != null) user.email = emailSafe
+                            if (newFirstName != null) user.firstName = newFirstName
+                            if (newLastName != null) user.lastName = newLastName
+                            user.displayName = listOfNotNull(user.firstName, user.lastName).joinToString(" ").ifEmpty { user.username }
+                            user
                         }
-                    }
-                    if (xwikiUser.firstName != null && xwikiUser.firstName != existing.firstName) { existing.firstName = xwikiUser.firstName; changed = true }
-                    if (xwikiUser.lastName != null && xwikiUser.lastName != existing.lastName) { existing.lastName = xwikiUser.lastName; changed = true }
-                    if (changed) {
-                        existing.displayName = listOfNotNull(existing.firstName, existing.lastName).joinToString(" ").ifEmpty { existing.username }
-                        userService.update(existing.id!!) { existing }
                         updated++
                     } else {
                         skipped++
@@ -301,19 +308,27 @@ class ConnectorSyncController(
                 val existing = userService.findByUsername(xwikiUser.username)
                 if (existing != null) {
                     // Update with fresh data
-                    var changed = false
-                    if (xwikiUser.email != null && xwikiUser.email != existing.email) {
-                        val emailOwner = userService.findByEmail(xwikiUser.email)
-                        if (emailOwner == null || emailOwner.id == existing.id) {
-                            existing.email = xwikiUser.email
-                            changed = true
+                    val newEmail = xwikiUser.email?.takeIf { it.isNotBlank() }
+                    val newFirstName = xwikiUser.firstName?.takeIf { it.isNotBlank() }
+                    val newLastName = xwikiUser.lastName?.takeIf { it.isNotBlank() }
+
+                    val emailSafe = if (newEmail != null && newEmail != existing.email) {
+                        val emailOwner = userService.findByEmail(newEmail)
+                        if (emailOwner == null || emailOwner.id == existing.id) newEmail else null
+                    } else null
+
+                    val hasChanges = emailSafe != null ||
+                        (newFirstName != null && newFirstName != existing.firstName) ||
+                        (newLastName != null && newLastName != existing.lastName)
+
+                    if (hasChanges) {
+                        userService.update(existing.id!!) { user ->
+                            if (emailSafe != null) user.email = emailSafe
+                            if (newFirstName != null) user.firstName = newFirstName
+                            if (newLastName != null) user.lastName = newLastName
+                            user.displayName = listOfNotNull(user.firstName, user.lastName).joinToString(" ").ifEmpty { user.username }
+                            user
                         }
-                    }
-                    if (xwikiUser.firstName != null && xwikiUser.firstName != existing.firstName) { existing.firstName = xwikiUser.firstName; changed = true }
-                    if (xwikiUser.lastName != null && xwikiUser.lastName != existing.lastName) { existing.lastName = xwikiUser.lastName; changed = true }
-                    if (changed) {
-                        existing.displayName = listOfNotNull(existing.firstName, existing.lastName).joinToString(" ").ifEmpty { existing.username }
-                        userService.update(existing.id!!) { existing }
                         usersUpdated++
                     }
                 } else {
