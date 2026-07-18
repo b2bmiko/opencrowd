@@ -17,10 +17,18 @@ interface AccessEntry {
   syncedAt: string;
 }
 
+interface GroupModel {
+  id: string;
+  name: string;
+  description?: string;
+  type?: string;
+}
+
 type Tab = 'groups' | 'users' | 'spaces' | 'inspect';
 
 export function AccessMatrixPage() {
   const [entries, setEntries] = useState<AccessEntry[]>([]);
+  const [allGroups, setAllGroups] = useState<GroupModel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('groups');
@@ -30,6 +38,7 @@ export function AccessMatrixPage() {
 
   useEffect(() => {
     loadEntries();
+    loadGroups();
   }, []);
 
   const loadEntries = async () => {
@@ -41,6 +50,15 @@ export function AccessMatrixPage() {
       console.error('Failed to load access matrix:', e);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadGroups = async () => {
+    try {
+      const response = await apiClient.get<{ data: GroupModel[]; total: number }>('/groups', { params: { size: 200 } });
+      setAllGroups(response.data.data || []);
+    } catch (e) {
+      console.error('Failed to load groups:', e);
     }
   };
 
@@ -70,7 +88,7 @@ export function AccessMatrixPage() {
   };
 
   // Get unique permissions (columns)
-  const allPermissions = [...new Set(entries.map((e) => e.permission))].sort();
+  const allPermissions = [...new Set(entries.map((e) => e.permission))].filter(p => p !== '(none)').sort();
 
   const togglePermission = async (principalName: string, permission: string, currentlyGranted: boolean, entry?: AccessEntry) => {
     try {
@@ -122,11 +140,23 @@ export function AccessMatrixPage() {
   // Build matrix: rows = unique principals, columns = permissions
   const principalMap = new Map<string, Map<string, boolean>>();
   filteredEntries.forEach((entry) => {
+    if (entry.permission === '(none)') return; // Skip placeholder entries
     if (!principalMap.has(entry.principalName)) {
       principalMap.set(entry.principalName, new Map());
     }
     principalMap.get(entry.principalName)!.set(entry.permission, entry.allow);
   });
+
+  // On groups tab, merge all OpenCrowd groups so they all appear as rows
+  if (activeTab === 'groups') {
+    allGroups.forEach((group) => {
+      const name = group.name;
+      if (searchQuery && !name.toLowerCase().includes(searchQuery.toLowerCase())) return;
+      if (!principalMap.has(name)) {
+        principalMap.set(name, new Map());
+      }
+    });
+  }
 
   const principals = [...principalMap.keys()].sort();
 
