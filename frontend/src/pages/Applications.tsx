@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Network, Plus, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { Network, Plus, CheckCircle, AlertCircle, XCircle, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useConnectors } from '@/hooks/use-connectors';
@@ -63,6 +63,8 @@ export function ApplicationsPage() {
 function ConnectorCard({ connector, onRefresh }: { connector: Connector; onRefresh: () => void }) {
   const [checking, setChecking] = useState(false);
   const [showSyncDialog, setShowSyncDialog] = useState(false);
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   const healthIcon = {
     HEALTHY: <CheckCircle className="h-5 w-5 text-emerald-500" />,
@@ -79,6 +81,19 @@ function ConnectorCard({ connector, onRefresh }: { connector: Connector; onRefre
       console.error('Health check failed:', e);
     } finally {
       setChecking(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    setDisconnecting(true);
+    try {
+      await apiClient.delete(`/connectors/${connector.id}`);
+      onRefresh();
+    } catch (e) {
+      console.error('Disconnect failed:', e);
+    } finally {
+      setDisconnecting(false);
+      setShowDisconnectConfirm(false);
     }
   };
 
@@ -126,8 +141,36 @@ function ConnectorCard({ connector, onRefresh }: { connector: Connector; onRefre
           <Button variant="outline" size="sm" onClick={() => setShowSyncDialog(true)}>
             Sync Users
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => setShowDisconnectConfirm(true)}
+          >
+            <Trash2 className="mr-1 h-3.5 w-3.5" />
+            Disconnect
+          </Button>
         </div>
       </div>
+
+      {showDisconnectConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm rounded-lg border bg-card p-6 shadow-lg">
+            <h3 className="text-lg font-semibold text-foreground">Disconnect Application</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Are you sure you want to disconnect <strong>{connector.name}</strong>? This will remove the connector and its saved credentials. Imported users and groups will not be deleted.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <Button variant="outline" size="sm" onClick={() => setShowDisconnectConfirm(false)} disabled={disconnecting}>
+                Cancel
+              </Button>
+              <Button variant="destructive" size="sm" onClick={handleDisconnect} disabled={disconnecting}>
+                {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showSyncDialog && (
         <SyncDialog
