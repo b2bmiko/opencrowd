@@ -1,7 +1,7 @@
 /**
- * Simple OIDC auth implementation using manual redirect flow.
- * Avoids oidc-client-ts dependency on crypto.subtle (requires HTTPS).
- * In production with HTTPS, we'll switch back to oidc-client-ts with PKCE.
+ * OIDC auth implementation using authorization code flow with PKCE.
+ * Uses crypto.subtle for code verifier/challenge (requires secure context or localhost).
+ * Falls back to plain code flow if crypto.subtle is unavailable.
  */
 
 const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8180';
@@ -32,9 +32,40 @@ export interface OidcUser {
 
 const TOKEN_KEY = 'opencrowd_auth';
 
+// Refresh buffer: refresh token 60 seconds before expiry
+const REFRESH_BUFFER_MS = 60 * 1000;
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+// --- PKCE helpers ---
+
+function generateCodeVerifier(): string {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return base64UrlEncode(array);
+}
+
+async function generateCodeChallenge(verifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return base64UrlEncode(new Uint8Array(hash));
+}
+
+function base64UrlEncode(buffer: Uint8Array): string {
+  let str = '';
+  buffer.forEach((b) => (str += String.fromCharCode(b)));
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function isPkceAvailable(): boolean {
+  return typeof crypto !== 'undefined' && typeof crypto.subtle !== 'undefined';
+}
+
+// --- Auth functions ---
+
 export async function login(): Promise<void> {
   const state = Math.random().toString(36).substring(2);
-  localStorage.setItem('auth_state', state);
+  sessionStorage.setItem('auth_state', state);
 
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -44,6 +75,15 @@ export async function login(): Promise<void> {
     state: state,
   });
 
+  // Use PKCE if available (secure context)
+  if (isPkceAvailable()) {
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = await generateCodeChallenge(codeVerifier);
+    sessionStorage.setItem('code_verifier', codeVerifier);
+    params.set('code_challenge', codeChallenge);
+    params.set('code_challenge_method', 'S256');
+  }
+
   window.location.href = `${AUTH_ENDPOINT}?${params.toString()}`;
 }
 
@@ -51,29 +91,39 @@ export async function handleCallback(): Promise<OidcUser> {
   const params = new URLSearchParams(window.location.search);
   const code = params.get('code');
   const state = params.get('state');
-  const storedState = localStorage.getItem('auth_state');
+  const storedState = sessionStorage.getItem('auth_state');
 
   if (!code) {
     throw new Error('No authorization code received');
   }
 
-  // Validate state only if we set one (skip for SSO auto-redirects)
+  // Validate state
   if (storedState && state !== storedState) {
     throw new Error('State mismatch — possible CSRF attack');
   }
 
-  localStorage.removeItem('auth_state');
+  sessionStorage.removeItem('auth_state');
+
+  // Build token request body
+  const body = new URLSearchParams({
+    grant_type: 'authorization_code',
+    client_id: CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+    code: code,
+  });
+
+  // Include PKCE code_verifier if we used it
+  const codeVerifier = sessionStorage.getItem('code_verifier');
+  if (codeVerifier) {
+    body.set('code_verifier', codeVerifier);
+    sessionStorage.removeItem('code_verifier');
+  }
 
   // Exchange code for tokens
   const tokenResponse = await fetch(TOKEN_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: CLIENT_ID,
-      redirect_uri: REDIRECT_URI,
-      code: code,
-    }),
+    body: body,
   });
 
   if (!tokenResponse.ok) {
@@ -82,32 +132,59 @@ export async function handleCallback(): Promise<OidcUser> {
   }
 
   const tokens = await tokenResponse.json();
-
-  // Decode the access token payload (JWT)
-  const payload = decodeJwtPayload(tokens.access_token);
-
-  const user: OidcUser = {
-    access_token: tokens.access_token,
-    refresh_token: tokens.refresh_token,
-    id_token: tokens.id_token,
-    expires_at: Date.now() + tokens.expires_in * 1000,
-    expired: false,
-    profile: {
-      sub: payload.sub,
-      name: payload.name,
-      preferred_username: payload.preferred_username,
-      email: payload.email,
-      tenant_id: payload.tenant_id,
-      realm_access: payload.realm_access,
-    },
-  };
+  const user = tokensToUser(tokens);
 
   localStorage.setItem(TOKEN_KEY, JSON.stringify(user));
+  scheduleRefresh(user);
 
   return user;
 }
 
+/**
+ * Silent token refresh using the stored refresh_token.
+ * Returns the new user or null if refresh failed (user must re-login).
+ */
+export async function refreshAccessToken(): Promise<OidcUser | null> {
+  const stored = localStorage.getItem(TOKEN_KEY);
+  if (!stored) return null;
+
+  const current: OidcUser = JSON.parse(stored);
+  if (!current.refresh_token) return null;
+
+  try {
+    const tokenResponse = await fetch(TOKEN_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: CLIENT_ID,
+        refresh_token: current.refresh_token,
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      console.warn('[Auth] Token refresh failed, user must re-login');
+      localStorage.removeItem(TOKEN_KEY);
+      return null;
+    }
+
+    const tokens = await tokenResponse.json();
+    const user = tokensToUser(tokens);
+
+    localStorage.setItem(TOKEN_KEY, JSON.stringify(user));
+    scheduleRefresh(user);
+
+    console.log('[Auth] Token refreshed silently');
+    return user;
+  } catch (e) {
+    console.error('[Auth] Refresh error:', e);
+    localStorage.removeItem(TOKEN_KEY);
+    return null;
+  }
+}
+
 export async function logout(): Promise<void> {
+  clearRefreshTimer();
   const stored = localStorage.getItem(TOKEN_KEY);
   localStorage.removeItem(TOKEN_KEY);
 
@@ -134,9 +211,13 @@ export async function getUser(): Promise<OidcUser | null> {
   user.expired = Date.now() > user.expires_at;
 
   if (user.expired) {
-    localStorage.removeItem(TOKEN_KEY);
-    return null;
+    // Try silent refresh before declaring expired
+    const refreshed = await refreshAccessToken();
+    return refreshed;
   }
+
+  // Schedule refresh if not already scheduled
+  scheduleRefresh(user);
 
   return user;
 }
@@ -144,6 +225,51 @@ export async function getUser(): Promise<OidcUser | null> {
 export async function getAccessToken(): Promise<string | null> {
   const user = await getUser();
   return user?.access_token || null;
+}
+
+// --- Internal helpers ---
+
+function tokensToUser(tokens: Record<string, unknown>): OidcUser {
+  const payload = decodeJwtPayload(tokens.access_token as string);
+
+  return {
+    access_token: tokens.access_token as string,
+    refresh_token: tokens.refresh_token as string | undefined,
+    id_token: tokens.id_token as string | undefined,
+    expires_at: Date.now() + (tokens.expires_in as number) * 1000,
+    expired: false,
+    profile: {
+      sub: payload.sub as string,
+      name: payload.name as string | undefined,
+      preferred_username: payload.preferred_username as string | undefined,
+      email: payload.email as string | undefined,
+      tenant_id: payload.tenant_id as string | undefined,
+      realm_access: payload.realm_access as { roles: string[] } | undefined,
+    },
+  };
+}
+
+function scheduleRefresh(user: OidcUser): void {
+  clearRefreshTimer();
+  if (!user.refresh_token) return;
+
+  const msUntilExpiry = user.expires_at - Date.now();
+  const refreshIn = Math.max(msUntilExpiry - REFRESH_BUFFER_MS, 5000); // At least 5s
+
+  refreshTimer = setTimeout(async () => {
+    const refreshed = await refreshAccessToken();
+    if (!refreshed) {
+      // Refresh failed — notify the app
+      window.dispatchEvent(new CustomEvent('auth:session-expired'));
+    }
+  }, refreshIn);
+}
+
+function clearRefreshTimer(): void {
+  if (refreshTimer) {
+    clearTimeout(refreshTimer);
+    refreshTimer = null;
+  }
 }
 
 function decodeJwtPayload(token: string): Record<string, unknown> {

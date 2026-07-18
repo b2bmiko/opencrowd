@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { type OidcUser, getUser, login, logout, handleCallback } from '@/lib/auth';
+import { type OidcUser, getUser, login, logout, handleCallback, refreshAccessToken } from '@/lib/auth';
 
 interface AuthState {
   user: OidcUser | null;
@@ -30,6 +30,11 @@ export const useAuthStore = create<AuthState>((set) => ({
         isAuthenticated: !!user && !user.expired,
         isLoading: false,
         error: null,
+      });
+
+      // Listen for session expiry events (fired by silent refresh failure)
+      window.addEventListener('auth:session-expired', () => {
+        set({ user: null, isAuthenticated: false, error: 'Session expired. Please log in again.' });
       });
     } catch (error) {
       console.error('[Auth] Initialize error:', error);
@@ -66,10 +71,6 @@ export const useAuthStore = create<AuthState>((set) => ({
       console.log('[Auth] Starting token exchange...');
       const user = await handleCallback();
       console.log('[Auth] Token exchange SUCCESS:', user.profile.preferred_username);
-      
-      // Verify storage
-      const verified = sessionStorage.getItem('opencrowd_auth');
-      console.log('[Auth] SessionStorage verified:', verified ? 'STORED' : 'NOT STORED');
       
       set({
         user,

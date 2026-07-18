@@ -1,4 +1,5 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import { refreshAccessToken } from '@/lib/auth';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
 
@@ -21,15 +22,49 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config;
 });
 
-// Response interceptor: transform errors
+// Response interceptor: handle 401 with silent refresh retry
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
+
+function onRefreshed(token: string) {
+  refreshSubscribers.forEach((cb) => cb(token));
+  refreshSubscribers = [];
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<ApiErrorResponse>) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid — redirect to login
-      localStorage.removeItem('opencrowd_auth');
-      window.location.href = '/';
+  async (error: AxiosError<ApiErrorResponse>) => {
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      if (!isRefreshing) {
+        isRefreshing = true;
+        const refreshed = await refreshAccessToken();
+        isRefreshing = false;
+
+        if (refreshed) {
+          onRefreshed(refreshed.access_token);
+          originalRequest.headers.Authorization = `Bearer ${refreshed.access_token}`;
+          return apiClient(originalRequest);
+        } else {
+          // Refresh failed — clear auth and redirect to login
+          localStorage.removeItem('opencrowd_auth');
+          window.location.href = '/';
+          return Promise.reject(transformError(error));
+        }
+      } else {
+        // Another request triggered refresh — wait for it
+        return new Promise((resolve) => {
+          refreshSubscribers.push((token: string) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            resolve(apiClient(originalRequest));
+          });
+        });
+      }
     }
+
     return Promise.reject(transformError(error));
   },
 );

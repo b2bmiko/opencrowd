@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Users, Plus, Search, Filter } from 'lucide-react';
+import { Users, Plus, Search, Filter, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useUsers } from '@/hooks/use-users';
 import { CreateUserDialog } from '@/components/users/CreateUserDialog';
+import { apiClient } from '@/lib/api-client';
 import type { User } from '@/types/models';
 
 export function IdentityPage() {
@@ -11,6 +12,7 @@ export function IdentityPage() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showOnboardDialog, setShowOnboardDialog] = useState(false);
 
   const { data, isLoading, error, refetch } = useUsers({
     page,
@@ -40,10 +42,16 @@ export function IdentityPage() {
             Manage user identities across your organization
           </p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Create User
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowCreateDialog(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Create User
+          </Button>
+          <Button onClick={() => setShowOnboardDialog(true)}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            Onboard User
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -147,6 +155,14 @@ export function IdentityPage() {
           refetch();
         }}
       />
+
+      {/* Onboard User Dialog */}
+      {showOnboardDialog && (
+        <OnboardUserDialog
+          onClose={() => setShowOnboardDialog(false)}
+          onSuccess={() => { setShowOnboardDialog(false); refetch(); }}
+        />
+      )}
     </div>
   );
 }
@@ -186,5 +202,235 @@ function UserRow({ user }: { user: User }) {
         {new Date(user.createdAt).toLocaleDateString()}
       </td>
     </tr>
+  );
+}
+
+
+interface GroupOption {
+  id: string;
+  name: string;
+}
+
+function OnboardUserDialog({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [step, setStep] = useState<'details' | 'groups' | 'result'>('details');
+  const [form, setForm] = useState({ username: '', email: '', firstName: '', lastName: '', department: '', title: '' });
+  const [groups, setGroups] = useState<GroupOption[]>([]);
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; username: string; groupsAssigned: string[]; provisioning: { connector: string; action: string; message: string }[]; errors: string[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load groups when we reach step 2
+  const loadGroups = async () => {
+    try {
+      const response = await apiClient.get<{ content: GroupOption[] }>('/groups', { params: { size: 200 } });
+      setGroups(response.data.content || []);
+    } catch (e) {
+      setGroups([]);
+    }
+    setStep('groups');
+  };
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const response = await apiClient.post('/lifecycle/joiner', {
+        username: form.username,
+        email: form.email,
+        firstName: form.firstName || null,
+        lastName: form.lastName || null,
+        department: form.department || null,
+        title: form.title || null,
+        groupIds: selectedGroups,
+      });
+      setResult(response.data as typeof result);
+      setStep('result');
+    } catch (e: unknown) {
+      setError(e && typeof e === 'object' && 'message' in e ? (e as { message: string }).message : 'Onboarding failed');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="w-full max-w-lg rounded-lg border bg-card p-6 shadow-lg">
+        {step === 'details' && (
+          <>
+            <h2 className="text-lg font-semibold text-foreground">Onboard New User</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Create user, assign to groups, and provision across connected applications.
+            </p>
+
+            {error && <div className="mt-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
+
+            <div className="mt-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-foreground">Username *</label>
+                  <input
+                    type="text"
+                    required
+                    value={form.username}
+                    onChange={(e) => setForm({ ...form, username: e.target.value })}
+                    className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="jdoe"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground">Email *</label>
+                  <input
+                    type="email"
+                    required
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="jane@example.com"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-foreground">First Name</label>
+                  <input
+                    type="text"
+                    value={form.firstName}
+                    onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                    className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground">Last Name</label>
+                  <input
+                    type="text"
+                    value={form.lastName}
+                    onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+                    className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-foreground">Department</label>
+                  <input
+                    type="text"
+                    value={form.department}
+                    onChange={(e) => setForm({ ...form, department: e.target.value })}
+                    className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground">Job Title</label>
+                  <input
+                    type="text"
+                    value={form.title}
+                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+              <Button size="sm" onClick={loadGroups} disabled={!form.username || !form.email}>
+                Next: Assign Groups
+              </Button>
+            </div>
+          </>
+        )}
+
+        {step === 'groups' && (
+          <>
+            <h2 className="text-lg font-semibold text-foreground">Assign Groups</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Select groups for <strong>{form.firstName || form.username}</strong> (optional).
+              The user will also be provisioned to all connected applications.
+            </p>
+
+            <div className="mt-4 max-h-60 overflow-y-auto space-y-1 rounded-md border p-3">
+              {groups.length > 0 ? groups.map((group) => (
+                <label key={group.id} className="flex items-center gap-2 py-1 text-sm text-foreground hover:bg-muted/30 rounded px-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedGroups.includes(group.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) setSelectedGroups([...selectedGroups, group.id]);
+                      else setSelectedGroups(selectedGroups.filter((id) => id !== group.id));
+                    }}
+                    className="rounded border"
+                  />
+                  {group.name}
+                </label>
+              )) : (
+                <p className="text-sm text-muted-foreground">No groups available</p>
+              )}
+            </div>
+
+            <p className="mt-3 text-xs text-muted-foreground">
+              {selectedGroups.length} group(s) selected
+            </p>
+
+            <div className="mt-6 flex justify-between">
+              <Button variant="outline" size="sm" onClick={() => setStep('details')}>Back</Button>
+              <div className="flex gap-3">
+                <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+                <Button size="sm" onClick={handleSubmit} disabled={isSubmitting}>
+                  {isSubmitting ? 'Onboarding...' : 'Onboard User'}
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {step === 'result' && result && (
+          <>
+            <h2 className="text-lg font-semibold text-foreground">
+              {result.success ? 'Onboarding Complete' : 'Onboarding Completed with Errors'}
+            </h2>
+
+            <div className="mt-4 space-y-3">
+              <div className="rounded-md bg-emerald-50 p-3">
+                <p className="text-sm text-emerald-700">User <strong>{result.username}</strong> created successfully.</p>
+              </div>
+
+              {result.groupsAssigned.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-foreground">Groups assigned:</p>
+                  <p className="text-sm text-muted-foreground">{result.groupsAssigned.join(', ')}</p>
+                </div>
+              )}
+
+              {result.provisioning.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-foreground">Provisioning:</p>
+                  <ul className="mt-1 space-y-1 text-sm">
+                    {result.provisioning.map((p, i) => (
+                      <li key={i} className={p.action === 'provisioned' ? 'text-emerald-600' : p.action === 'failed' ? 'text-red-600' : 'text-amber-600'}>
+                        {p.connector}: {p.action} {p.message && `— ${p.message}`}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {result.errors.length > 0 && (
+                <div className="rounded-md bg-destructive/10 p-3">
+                  <p className="text-sm font-medium text-destructive">Errors:</p>
+                  <ul className="mt-1 list-inside list-disc text-sm text-destructive">
+                    {result.errors.map((e, i) => <li key={i}>{e}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <Button size="sm" onClick={onSuccess}>Done</Button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }

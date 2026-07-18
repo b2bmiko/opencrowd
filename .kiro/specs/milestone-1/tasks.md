@@ -1,4 +1,4 @@
-# OpenCrowd — Milestone 1: Identity & Connectors (Community MVP)
+I i# OpenCrowd — Milestone 1: Identity & Connectors (Community MVP)
 
 ## Overview
 

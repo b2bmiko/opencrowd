@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Save, UserCog, Users, Network, MapPin } from 'lucide-react';
+import { ArrowLeft, Save, UserCog, Users, Network, MapPin, UserMinus, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { apiClient } from '@/lib/api-client';
@@ -252,13 +252,13 @@ export function UserDetailPage({ userId, onBack }: UserDetailPageProps) {
                 <>
                   <Button variant="outline" size="sm" onClick={() => handleStatusChange('DISABLED')}>Disable</Button>
                   <Button variant="outline" size="sm" onClick={() => handleStatusChange('LOCKED')}>Lock</Button>
-                  <Button variant="destructive" size="sm" onClick={() => handleStatusChange('OFFBOARDED')}>Offboard</Button>
+                  <OffboardButton userId={userId} username={user.username} onSuccess={loadUser} setError={setError} />
                 </>
               )}
               {user.status === 'DISABLED' && (
                 <>
                   <Button variant="outline" size="sm" onClick={() => handleStatusChange('ACTIVE')}>Re-enable</Button>
-                  <Button variant="destructive" size="sm" onClick={() => handleStatusChange('OFFBOARDED')}>Offboard</Button>
+                  <OffboardButton userId={userId} username={user.username} onSuccess={loadUser} setError={setError} />
                 </>
               )}
               {user.status === 'LOCKED' && (
@@ -269,6 +269,9 @@ export function UserDetailPage({ userId, onBack }: UserDetailPageProps) {
               )}
               {user.status === 'PENDING' && (
                 <Button variant="outline" size="sm" onClick={() => handleStatusChange('ACTIVE')}>Activate</Button>
+              )}
+              {user.status === 'OFFBOARDED' && (
+                <ReactivateButton userId={userId} username={user.username} groups={groups} onSuccess={loadUser} setError={setError} />
               )}
             </div>
 
@@ -381,5 +384,210 @@ export function UserDetailPage({ userId, onBack }: UserDetailPageProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+
+// --- JML Components ---
+
+function OffboardButton({ userId, username, onSuccess, setError }: { userId: string; username: string; onSuccess: () => void; setError: (e: string) => void }) {
+  const [showDialog, setShowDialog] = useState(false);
+  const [preview, setPreview] = useState<{ groupsToRemove: string[]; connectorsToDeprovision: string[] } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; groupsRemoved: string[]; deprovisioning: { connector: string; action: string; message: string }[]; errors: string[] } | null>(null);
+
+  const loadPreview = async () => {
+    setShowDialog(true);
+    try {
+      const response = await apiClient.post<{ groupsToRemove: string[]; connectorsToDeprovision: string[] }>(`/lifecycle/leaver/${userId}/preview`);
+      setPreview(response.data);
+    } catch (e) {
+      setPreview({ groupsToRemove: [], connectorsToDeprovision: [] });
+    }
+  };
+
+  const executeLeaver = async () => {
+    setIsLoading(true);
+    try {
+      const response = await apiClient.post(`/lifecycle/leaver/${userId}`);
+      setResult(response.data as typeof result);
+    } catch (e: unknown) {
+      setError('Offboarding failed');
+      setShowDialog(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleClose = () => {
+    setShowDialog(false);
+    setPreview(null);
+    setResult(null);
+    if (result?.success) onSuccess();
+  };
+
+  return (
+    <>
+      <Button variant="destructive" size="sm" onClick={loadPreview}>
+        <UserMinus className="mr-1 h-3.5 w-3.5" />
+        Offboard
+      </Button>
+
+      {showDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-lg">
+            {!result ? (
+              <>
+                <h3 className="text-lg font-semibold text-foreground">Offboard User</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  This will fully offboard <strong>{username}</strong> by:
+                </p>
+
+                {preview ? (
+                  <div className="mt-4 space-y-3">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Groups to remove from:</p>
+                      {preview.groupsToRemove.length > 0 ? (
+                        <ul className="mt-1 list-inside list-disc text-sm text-muted-foreground">
+                          {preview.groupsToRemove.map((g) => <li key={g}>{g}</li>)}
+                        </ul>
+                      ) : (
+                        <p className="mt-1 text-sm text-muted-foreground">No group memberships</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Applications to deprovision from:</p>
+                      {preview.connectorsToDeprovision.length > 0 ? (
+                        <ul className="mt-1 list-inside list-disc text-sm text-muted-foreground">
+                          {preview.connectorsToDeprovision.map((c) => <li key={c}>{c}</li>)}
+                        </ul>
+                      ) : (
+                        <p className="mt-1 text-sm text-muted-foreground">No connected applications</p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 flex justify-center">
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  </div>
+                )}
+
+                <div className="mt-6 flex justify-end gap-3">
+                  <Button variant="outline" size="sm" onClick={handleClose}>Cancel</Button>
+                  <Button variant="destructive" size="sm" onClick={executeLeaver} disabled={isLoading || !preview}>
+                    {isLoading ? 'Offboarding...' : 'Confirm Offboarding'}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-semibold text-foreground">
+                  {result.success ? 'Offboarding Complete' : 'Offboarding Completed with Errors'}
+                </h3>
+                <div className="mt-4 space-y-3">
+                  {result.groupsRemoved.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Removed from groups:</p>
+                      <p className="text-sm text-muted-foreground">{result.groupsRemoved.join(', ')}</p>
+                    </div>
+                  )}
+                  {result.deprovisioning.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Connector results:</p>
+                      <ul className="mt-1 space-y-1 text-sm">
+                        {result.deprovisioning.map((d, i) => (
+                          <li key={i} className={d.action === 'deprovisioned' ? 'text-emerald-600' : 'text-amber-600'}>
+                            {d.connector}: {d.action} — {d.message}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {result.errors.length > 0 && (
+                    <div className="rounded-md bg-destructive/10 p-3">
+                      <p className="text-sm font-medium text-destructive">Errors:</p>
+                      <ul className="mt-1 list-inside list-disc text-sm text-destructive">
+                        {result.errors.map((e, i) => <li key={i}>{e}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-6 flex justify-end">
+                  <Button size="sm" onClick={handleClose}>Done</Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ReactivateButton({ userId, username, groups, onSuccess, setError }: { userId: string; username: string; groups: Group[]; onSuccess: () => void; setError: (e: string) => void }) {
+  const [showDialog, setShowDialog] = useState(false);
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleReactivate = async () => {
+    setIsLoading(true);
+    try {
+      await apiClient.post(`/lifecycle/reactivate/${userId}`, { groupIds: selectedGroups });
+      setShowDialog(false);
+      onSuccess();
+    } catch (e: unknown) {
+      setError('Reactivation failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={() => setShowDialog(true)}>
+        <UserPlus className="mr-1 h-3.5 w-3.5" />
+        Reactivate
+      </Button>
+
+      {showDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-lg">
+            <h3 className="text-lg font-semibold text-foreground">Reactivate User</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Re-enable <strong>{username}</strong> and re-provision to connected applications.
+            </p>
+
+            {groups.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm font-medium text-foreground">Assign to groups (optional):</p>
+                <div className="mt-2 max-h-40 overflow-y-auto space-y-1">
+                  {groups.map((group) => (
+                    <label key={group.id} className="flex items-center gap-2 text-sm text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={selectedGroups.includes(group.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedGroups([...selectedGroups, group.id]);
+                          else setSelectedGroups(selectedGroups.filter((id) => id !== group.id));
+                        }}
+                        className="rounded border"
+                      />
+                      {group.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end gap-3">
+              <Button variant="outline" size="sm" onClick={() => setShowDialog(false)}>Cancel</Button>
+              <Button size="sm" onClick={handleReactivate} disabled={isLoading}>
+                {isLoading ? 'Reactivating...' : 'Reactivate'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

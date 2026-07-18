@@ -267,6 +267,36 @@ class XWikiClient(
     }
 
     /**
+     * Disable a user in xWiki by setting their active property to 0.
+     */
+    fun disableUser(username: String, wiki: String = "xwiki"): Boolean {
+        return try {
+            // Update the active property on the XWikiUsers object
+            val xmlBody = """
+                <property xmlns="http://www.xwiki.org">
+                    <value>0</value>
+                </property>
+            """.trimIndent()
+
+            val response = put(
+                "/rest/wikis/$wiki/spaces/XWiki/pages/$username/objects/XWiki.XWikiUsers/0/properties/active",
+                xmlBody
+            )
+
+            if (response.statusCode() in 200..299) {
+                logger.info("Disabled user in xWiki: $username")
+                true
+            } else {
+                logger.error("Failed to disable xWiki user $username: HTTP ${response.statusCode()}")
+                false
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to disable user in xWiki: ${e.message}")
+            false
+        }
+    }
+
+    /**
      * Fetch members of a specific group.
      */
     fun getGroupMembers(groupName: String, wiki: String = "xwiki"): List<String> {
