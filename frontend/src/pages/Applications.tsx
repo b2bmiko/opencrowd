@@ -139,7 +139,7 @@ function ConnectorCard({ connector, onRefresh }: { connector: Connector; onRefre
             {checking ? 'Checking...' : 'Health Check'}
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowSyncDialog(true)}>
-            Sync Users
+            Sync
           </Button>
           <Button
             variant="outline"
@@ -246,16 +246,22 @@ function CreateConnectorDialog({ onClose, onSuccess }: { onClose: () => void; on
 function SyncDialog({ connectorId, connectorName, onClose, onSuccess }: { connectorId: string; connectorName: string; onClose: () => void; onSuccess: () => void }) {
   const [form, setForm] = useState({ baseUrl: '', username: '', password: '' });
   const [isSyncing, setIsSyncing] = useState(false);
-  const [result, setResult] = useState<{ success: boolean; created?: number; skipped?: number; errors?: number; error?: string } | null>(null);
+  const [result, setResult] = useState<{
+    success: boolean;
+    users?: { total: number; created: number; updated: number; errors: number };
+    groups?: { total: number; created: number; skipped: number };
+    memberships?: { linked: number; skipped: number };
+    error?: string;
+  } | null>(null);
 
-  const handleSync = async (type: 'users' | 'groups') => {
+  const handleFullSync = async () => {
     setIsSyncing(true);
     setResult(null);
     try {
-      const response = await apiClient.post(`/connectors/${connectorId}/import-${type}`, form);
+      const response = await apiClient.post(`/connectors/${connectorId}/sync-all`, form);
       setResult(response.data);
     } catch (e: unknown) {
-      setResult({ success: false, error: 'Sync failed' });
+      setResult({ success: false, error: 'Sync failed — check connection details' });
     } finally {
       setIsSyncing(false);
     }
@@ -264,9 +270,9 @@ function SyncDialog({ connectorId, connectorName, onClose, onSuccess }: { connec
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-lg">
-        <h2 className="text-lg font-semibold text-foreground">Sync: {connectorName}</h2>
+        <h2 className="text-lg font-semibold text-foreground">Full Sync: {connectorName}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Enter connection credentials to import users and groups
+          Import all users, groups, and memberships from the connected application.
         </p>
 
         <div className="mt-4 space-y-3">
@@ -304,31 +310,33 @@ function SyncDialog({ connectorId, connectorName, onClose, onSuccess }: { connec
 
         {result && (
           <div className={`mt-4 rounded-md p-3 text-sm ${result.success ? 'bg-emerald-50 text-emerald-700' : 'bg-destructive/10 text-destructive'}`}>
-            {result.success
-              ? `Imported: ${result.created} created, ${result.skipped} skipped, ${result.errors} errors`
-              : `Error: ${result.error}`
-            }
+            {result.success ? (
+              <div className="space-y-1">
+                <p className="font-medium">Sync complete</p>
+                {result.users && (
+                  <p>Users: {result.users.total} found, {result.users.created} created, {result.users.updated} updated{result.users.errors > 0 ? `, ${result.users.errors} errors` : ''}</p>
+                )}
+                {result.groups && (
+                  <p>Groups: {result.groups.total} found, {result.groups.created} created, {result.groups.skipped} existing</p>
+                )}
+                {result.memberships && (
+                  <p>Memberships: {result.memberships.linked} linked</p>
+                )}
+              </div>
+            ) : (
+              <p>Error: {result.error}</p>
+            )}
           </div>
         )}
 
         <div className="mt-6 flex justify-between">
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              onClick={() => handleSync('users')}
-              disabled={isSyncing || !form.baseUrl || !form.username || !form.password}
-            >
-              {isSyncing ? 'Syncing...' : 'Import Users'}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleSync('groups')}
-              disabled={isSyncing || !form.baseUrl || !form.username || !form.password}
-            >
-              Import Groups
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            onClick={handleFullSync}
+            disabled={isSyncing || !form.baseUrl || !form.username || !form.password}
+          >
+            {isSyncing ? 'Syncing...' : 'Sync All (Users + Groups + Members)'}
+          </Button>
           <Button variant="ghost" size="sm" onClick={result?.success ? onSuccess : onClose}>
             {result?.success ? 'Done' : 'Cancel'}
           </Button>

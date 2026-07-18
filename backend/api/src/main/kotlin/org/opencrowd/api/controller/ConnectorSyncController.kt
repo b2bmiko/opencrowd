@@ -48,44 +48,46 @@ class ConnectorSyncController(
         val dbConnector = connectorService.findById(id)
             ?: return ResponseEntity.notFound().build()
 
-        val baseUrl = body["baseUrl"] ?: throw IllegalArgumentException("Missing baseUrl")
-        val username = body["username"] ?: throw IllegalArgumentException("Missing username")
-        val password = body["password"] ?: throw IllegalArgumentException("Missing password")
+        val xwikiClient = buildXWikiClient(body)
+            ?: return ResponseEntity.ok(mapOf("success" to false, "error" to "Connection failed"))
 
-        // Create xWiki client directly for import
-        val xwikiClient = XWikiClient(baseUrl.trimEnd('/'), username, password)
-
-        if (!xwikiClient.testConnection()) {
-            return ResponseEntity.ok(mapOf("success" to false, "error" to "Connection failed"))
-        }
-
-        // Fetch users from xWiki
         val xwikiUsers = xwikiClient.getUsers()
         logger.info("Found ${xwikiUsers.size} users in xWiki to import")
 
         var created = 0
+        var updated = 0
         var skipped = 0
         var errors = 0
         val importedUsers = mutableListOf<String>()
 
         xwikiUsers.forEach { xwikiUser ->
             try {
-                // Check if user already exists
                 val existing = userService.findByUsername(xwikiUser.username)
                 if (existing != null) {
-                    skipped++
+                    // Update existing user with fresh details from xWiki
+                    var changed = false
+                    if (xwikiUser.email != null && xwikiUser.email != existing.email) { existing.email = xwikiUser.email; changed = true }
+                    if (xwikiUser.firstName != null && xwikiUser.firstName != existing.firstName) { existing.firstName = xwikiUser.firstName; changed = true }
+                    if (xwikiUser.lastName != null && xwikiUser.lastName != existing.lastName) { existing.lastName = xwikiUser.lastName; changed = true }
+                    if (changed) {
+                        existing.displayName = listOfNotNull(existing.firstName, existing.lastName).joinToString(" ").ifEmpty { existing.username }
+                        userService.update(existing.id!!) { existing }
+                        updated++
+                    } else {
+                        skipped++
+                    }
                     return@forEach
                 }
 
-                // Create user in OpenCrowd
+                val displayName = listOfNotNull(xwikiUser.firstName, xwikiUser.lastName).joinToString(" ").ifEmpty { xwikiUser.username }
                 val user = User(
                     username = xwikiUser.username,
                     email = xwikiUser.email ?: "${xwikiUser.username}@imported.local",
                     firstName = xwikiUser.firstName,
                     lastName = xwikiUser.lastName,
-                    displayName = xwikiUser.username,
+                    displayName = displayName,
                     status = UserStatus.ACTIVE,
-                    externalId = "xwiki:${xwikiUser.id}",
+                    externalId = "xwiki:${xwikiUser.username}",
                 )
                 userService.create(user)
                 created++
@@ -96,11 +98,12 @@ class ConnectorSyncController(
             }
         }
 
-        logger.info("xWiki user import complete: created=$created, skipped=$skipped, errors=$errors")
+        logger.info("xWiki user import complete: created=$created, updated=$updated, skipped=$skipped, errors=$errors")
 
         return ResponseEntity.ok(mapOf(
             "success" to true,
             "created" to created,
+            "updated" to updated,
             "skipped" to skipped,
             "errors" to errors,
             "total" to xwikiUsers.size,
@@ -239,5 +242,147 @@ class ConnectorSyncController(
             "total" to xwikiGroups.size,
             "importedGroups" to importedGroups,
         ))
+    }
+
+    @PostMapping("/{id}/sync-all")
+    @Operation(summary = "Full sync", description = "Imports all users, groups, and memberships from connected application in one operation")
+    @PreAuthorize("hasRole('manage_connectors')")
+    fun syncAll(
+        @PathVariable id: UUID,
+        @RequestBody body: Map<String, String>
+    ): ResponseEntity<Map<String, Any>> {
+        val dbConnector = connectorService.findById(id)
+            ?: return ResponseEntity.notFound().build()
+
+        val xwikiClient = buildXWikiClient(body)
+            ?: return ResponseEntity.ok(mapOf("success" to false, "error" to "Connection failed"))
+
+        logger.info("[SyncAll] Starting full sync from xWiki...")
+
+        // === Phase 1: Import users ===
+        val xwikiUsers = xwikiClient.getUsers()
+        logger.info("[SyncAll] Found ${xwikiUsers.size} users in xWiki")
+
+        var usersCreated = 0
+        var usersUpdated = 0
+        var usersErrors = 0
+
+        xwikiUsers.forEach { xwikiUser ->
+            try {
+                val existing = userService.findByUsername(xwikiUser.username)
+                if (existing != null) {
+                    // Update with fresh data
+                    var changed = false
+                    if (xwikiUser.email != null && xwikiUser.email != existing.email) { existing.email = xwikiUser.email; changed = true }
+                    if (xwikiUser.firstName != null && xwikiUser.firstName != existing.firstName) { existing.firstName = xwikiUser.firstName; changed = true }
+                    if (xwikiUser.lastName != null && xwikiUser.lastName != existing.lastName) { existing.lastName = xwikiUser.lastName; changed = true }
+                    if (changed) {
+                        existing.displayName = listOfNotNull(existing.firstName, existing.lastName).joinToString(" ").ifEmpty { existing.username }
+                        userService.update(existing.id!!) { existing }
+                        usersUpdated++
+                    }
+                } else {
+                    val displayName = listOfNotNull(xwikiUser.firstName, xwikiUser.lastName).joinToString(" ").ifEmpty { xwikiUser.username }
+                    val user = User(
+                        username = xwikiUser.username,
+                        email = xwikiUser.email ?: "${xwikiUser.username}@imported.local",
+                        firstName = xwikiUser.firstName,
+                        lastName = xwikiUser.lastName,
+                        displayName = displayName,
+                        status = UserStatus.ACTIVE,
+                        externalId = "xwiki:${xwikiUser.username}",
+                    )
+                    userService.create(user)
+                    usersCreated++
+                }
+            } catch (e: Exception) {
+                logger.warn("[SyncAll] User import error for ${xwikiUser.username}: ${e.message}")
+                usersErrors++
+            }
+        }
+
+        // === Phase 2: Import groups ===
+        val xwikiGroups = xwikiClient.getGroups()
+        logger.info("[SyncAll] Found ${xwikiGroups.size} groups in xWiki")
+
+        var groupsCreated = 0
+        var groupsSkipped = 0
+
+        xwikiGroups.forEach { xwikiGroup ->
+            try {
+                val existing = groupService.findByName(xwikiGroup.name)
+                if (existing != null) {
+                    groupsSkipped++
+                    return@forEach
+                }
+                val group = Group(
+                    name = xwikiGroup.name,
+                    description = "Imported from xWiki",
+                    type = GroupType.STATIC,
+                )
+                groupService.create(group)
+                groupsCreated++
+            } catch (e: Exception) {
+                logger.warn("[SyncAll] Group import error for ${xwikiGroup.name}: ${e.message}")
+            }
+        }
+
+        // === Phase 3: Sync group memberships ===
+        var membersLinked = 0
+        var membersSkipped = 0
+
+        xwikiGroups.forEach { xwikiGroup ->
+            try {
+                val group = groupService.findByName(xwikiGroup.name) ?: return@forEach
+                val memberUsernames = xwikiClient.getGroupMembers(xwikiGroup.name)
+                val existingMembers = groupService.getMembers(group.id!!)
+
+                memberUsernames.forEach { memberUsername ->
+                    val user = userService.findByUsername(memberUsername)
+                    if (user != null && group.id != null && user.id!! !in existingMembers) {
+                        try {
+                            groupService.addMember(group.id!!, user.id!!)
+                            membersLinked++
+                        } catch (_: Exception) {
+                            membersSkipped++
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                logger.warn("[SyncAll] Membership sync error for ${xwikiGroup.name}: ${e.message}")
+            }
+        }
+
+        logger.info("[SyncAll] Complete: users(created=$usersCreated, updated=$usersUpdated), groups(created=$groupsCreated), members(linked=$membersLinked)")
+
+        return ResponseEntity.ok(mapOf(
+            "success" to true,
+            "users" to mapOf(
+                "total" to xwikiUsers.size,
+                "created" to usersCreated,
+                "updated" to usersUpdated,
+                "errors" to usersErrors,
+            ),
+            "groups" to mapOf(
+                "total" to xwikiGroups.size,
+                "created" to groupsCreated,
+                "skipped" to groupsSkipped,
+            ),
+            "memberships" to mapOf(
+                "linked" to membersLinked,
+                "skipped" to membersSkipped,
+            ),
+        ))
+    }
+
+    // --- Helpers ---
+
+    private fun buildXWikiClient(body: Map<String, String>): XWikiClient? {
+        val baseUrl = body["baseUrl"] ?: throw IllegalArgumentException("Missing baseUrl")
+        val username = body["username"] ?: throw IllegalArgumentException("Missing username")
+        val password = body["password"] ?: throw IllegalArgumentException("Missing password")
+
+        val client = XWikiClient(baseUrl.trimEnd('/'), username, password)
+        return if (client.testConnection()) client else null
     }
 }

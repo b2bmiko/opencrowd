@@ -114,7 +114,7 @@ class XWikiClient(
     }
 
     /**
-     * Fetch all users from xWiki.
+     * Fetch all users from xWiki with full profile details.
      */
     fun getUsers(wiki: String = "xwiki"): List<XWikiUser> {
         val users = mutableListOf<XWikiUser>()
@@ -138,8 +138,42 @@ class XWikiClient(
             if (pageUsers.size < limit) break
         }
 
-        logger.info("Fetched ${users.size} users from xWiki")
-        return users
+        // Fetch full details (email, firstName, lastName) for each user
+        val detailedUsers = users.map { user ->
+            try {
+                getUserDetails(user.username, wiki) ?: user
+            } catch (e: Exception) {
+                logger.warn("Failed to fetch details for user ${user.username}: ${e.message}")
+                user
+            }
+        }
+
+        logger.info("Fetched ${detailedUsers.size} users from xWiki (with details)")
+        return detailedUsers
+    }
+
+    /**
+     * Fetch full profile details for a single user from their XWikiUsers object.
+     */
+    fun getUserDetails(username: String, wiki: String = "xwiki"): XWikiUser? {
+        val response = get("/rest/wikis/$wiki/spaces/XWiki/pages/$username/objects/XWiki.XWikiUsers/0")
+        if (response.statusCode() != 200) {
+            return null
+        }
+
+        val body = response.body()
+        val email = extractPropertyValue(body, "email")
+        val firstName = extractPropertyValue(body, "first_name")
+        val lastName = extractPropertyValue(body, "last_name")
+
+        return XWikiUser(
+            username = username,
+            fullName = "XWiki.$username",
+            id = username,
+            email = email?.takeIf { it.isNotBlank() },
+            firstName = firstName?.takeIf { it.isNotBlank() },
+            lastName = lastName?.takeIf { it.isNotBlank() },
+        )
     }
 
     /**
