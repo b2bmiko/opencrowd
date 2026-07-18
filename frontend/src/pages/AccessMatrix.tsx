@@ -55,8 +55,8 @@ export function AccessMatrixPage() {
 
   const loadGroups = async () => {
     try {
-      const response = await apiClient.get<{ data: GroupModel[]; total: number }>('/groups', { params: { size: 200 } });
-      setAllGroups(response.data.data || []);
+      const response = await apiClient.get<{ content: GroupModel[]; totalElements: number }>('/groups', { params: { size: 200 } });
+      setAllGroups(response.data.content || []);
     } catch (e) {
       console.error('Failed to load groups:', e);
     }
