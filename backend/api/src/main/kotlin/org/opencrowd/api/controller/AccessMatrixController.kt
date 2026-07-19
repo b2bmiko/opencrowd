@@ -151,12 +151,13 @@ class AccessMatrixController(
     }
 
     @PostMapping("/push-to-apps")
-    @Operation(summary = "Push permissions to apps", description = "Writes all manually-granted permissions from OpenCrowd to connected applications")
+    @Operation(summary = "Push permissions to apps", description = "Writes all granted permissions from OpenCrowd to connected applications")
     @PreAuthorize("hasRole('manage_connectors')")
     fun pushToApps(): ResponseEntity<Map<String, Any>> {
-        val entries = accessEntryRepository.findAll().filter { it.source == "manual" && it.allow && it.permission != "(none)" }
+        // Push ALL granted permissions to xWiki (regardless of source)
+        val entries = accessEntryRepository.findAll().filter { it.allow && it.permission != "(none)" }
         if (entries.isEmpty()) {
-            return ResponseEntity.ok(mapOf("success" to true, "pushed" to 0, "message" to "No manual permissions to push"))
+            return ResponseEntity.ok(mapOf("success" to true, "pushed" to 0, "message" to "No permissions to push"))
         }
 
         val connectors = connectorService.findAll().filter { it.connectorType == "xwiki" && it.config != "{}" }
@@ -184,9 +185,6 @@ class AccessMatrixController(
                 val success = client.addRight(spaceName, entry.principalName, isGroup, listOf(entry.permission))
                 if (success) {
                     pushed++
-                    // Update source to "synced" since it's now in both places
-                    entry.source = "synced"
-                    accessEntryRepository.save(entry)
                 } else {
                     failed++
                     results.add("${entry.principalName}/${entry.permission}: write failed")
