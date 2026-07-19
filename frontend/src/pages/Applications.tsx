@@ -62,6 +62,8 @@ export function ApplicationsPage() {
 
 function ConnectorCard({ connector, onRefresh }: { connector: Connector; onRefresh: () => void }) {
   const [checking, setChecking] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ success: boolean; users?: { total: number; created: number; updated: number; errors: number }; groups?: { total: number; created: number; skipped: number }; memberships?: { linked: number }; error?: string } | null>(null);
   const [showSyncDialog, setShowSyncDialog] = useState(false);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -94,6 +96,21 @@ function ConnectorCard({ connector, onRefresh }: { connector: Connector; onRefre
     } finally {
       setDisconnecting(false);
       setShowDisconnectConfirm(false);
+    }
+  };
+
+  const handleQuickSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const response = await apiClient.post(`/connectors/${connector.id}/resync`);
+      setSyncResult(response.data);
+      onRefresh();
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? (e as { message: string }).message : 'Sync failed';
+      setSyncResult({ success: false, error: msg });
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -138,8 +155,8 @@ function ConnectorCard({ connector, onRefresh }: { connector: Connector; onRefre
           <Button variant="outline" size="sm" onClick={runHealthCheck} disabled={checking}>
             {checking ? 'Checking...' : 'Health Check'}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowSyncDialog(true)}>
-            Sync
+          <Button variant="outline" size="sm" onClick={connector.status === 'CONNECTED' ? handleQuickSync : () => setShowSyncDialog(true)} disabled={syncing}>
+            {syncing ? 'Syncing...' : 'Sync'}
           </Button>
           <Button
             variant="outline"
@@ -151,6 +168,21 @@ function ConnectorCard({ connector, onRefresh }: { connector: Connector; onRefre
             Disconnect
           </Button>
         </div>
+
+        {syncResult && (
+          <div className={`mt-3 rounded-md p-3 text-xs ${syncResult.success ? 'bg-emerald-50 text-emerald-700' : 'bg-destructive/10 text-destructive'}`}>
+            {syncResult.success ? (
+              <div className="space-y-0.5">
+                <p className="font-medium">Sync complete</p>
+                {syncResult.users && <p>Users: {syncResult.users.total} found, {syncResult.users.created} created, {syncResult.users.updated} updated{syncResult.users.errors > 0 ? `, ${syncResult.users.errors} errors` : ''}</p>}
+                {syncResult.groups && <p>Groups: {syncResult.groups.total} found, {syncResult.groups.created} created</p>}
+                {syncResult.memberships && syncResult.memberships.linked > 0 && <p>Memberships: {syncResult.memberships.linked} linked</p>}
+              </div>
+            ) : (
+              <p>{syncResult.error}</p>
+            )}
+          </div>
+        )}
       </div>
 
       {showDisconnectConfirm && (

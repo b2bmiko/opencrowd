@@ -435,6 +435,132 @@ class ConnectorSyncController(
         ))
     }
 
+    @PostMapping("/{id}/resync")
+    @Operation(summary = "Re-sync using stored credentials", description = "Syncs users, groups, and memberships using the connector's saved credentials")
+    @PreAuthorize("hasRole('manage_connectors')")
+    fun resync(@PathVariable id: UUID): ResponseEntity<Map<String, Any>> {
+        ensureTenantContext()
+        val dbConnector = connectorService.findById(id)
+            ?: return ResponseEntity.notFound().build()
+
+        if (dbConnector.config == "{}") {
+            return ResponseEntity.ok(mapOf("success" to false, "error" to "No credentials saved. Use Test Connection first."))
+        }
+
+        val xwikiClient = buildXWikiClientFromConfig(dbConnector.config)
+            ?: return ResponseEntity.ok(mapOf("success" to false, "error" to "Connection failed — stored credentials may be invalid"))
+
+        logger.info("[Resync] Starting full sync from stored credentials for connector: ${dbConnector.name}")
+
+        // === Phase 1: Import users ===
+        val xwikiUsers = xwikiClient.getUsers()
+        var usersCreated = 0
+        var usersUpdated = 0
+        var usersErrors = 0
+        val failedUsers = mutableListOf<String>()
+
+        xwikiUsers.forEach { xwikiUser ->
+            try {
+                if (xwikiUser.username in listOf("XWikiGuest", "superadmin", "XWikiRobot", "XWikiDefaultSkin")) return@forEach
+
+                val existing = userService.findByUsername(xwikiUser.username)
+                if (existing != null) {
+                    val newEmail = xwikiUser.email?.takeIf { it.isNotBlank() }
+                    val newFirstName = xwikiUser.firstName?.takeIf { it.isNotBlank() }
+                    val newLastName = xwikiUser.lastName?.takeIf { it.isNotBlank() }
+
+                    val emailSafe = if (newEmail != null && newEmail != existing.email) {
+                        val emailOwner = userService.findByEmail(newEmail)
+                        if (emailOwner == null || emailOwner.id == existing.id) newEmail else null
+                    } else null
+
+                    val hasChanges = emailSafe != null ||
+                        (newFirstName != null && newFirstName != existing.firstName) ||
+                        (newLastName != null && newLastName != existing.lastName)
+
+                    if (hasChanges) {
+                        userService.update(existing.id!!) { user ->
+                            if (emailSafe != null) user.email = emailSafe
+                            if (newFirstName != null) user.firstName = newFirstName
+                            if (newLastName != null) user.lastName = newLastName
+                            user.displayName = listOfNotNull(user.firstName, user.lastName).joinToString(" ").ifEmpty { user.username }
+                            user
+                        }
+                        usersUpdated++
+                    }
+                } else {
+                    val email = xwikiUser.email?.takeIf { it.isNotBlank() } ?: "${xwikiUser.username}@imported.local"
+                    val emailExists = userService.findByEmail(email)
+                    val finalEmail = if (emailExists != null) "${xwikiUser.username}@imported.local" else email
+                    val safeEmail = if (userService.findByEmail(finalEmail) != null) "${xwikiUser.username}.${System.currentTimeMillis() % 10000}@imported.local" else finalEmail
+
+                    val displayName = listOfNotNull(xwikiUser.firstName, xwikiUser.lastName).joinToString(" ").ifEmpty { xwikiUser.username }
+                    val user = User(
+                        username = xwikiUser.username,
+                        email = safeEmail,
+                        firstName = xwikiUser.firstName,
+                        lastName = xwikiUser.lastName,
+                        displayName = displayName,
+                        status = UserStatus.ACTIVE,
+                        externalId = "xwiki:${xwikiUser.username}",
+                    )
+                    userService.create(user)
+                    usersCreated++
+                }
+            } catch (e: Exception) {
+                logger.warn("[Resync] User import error for ${xwikiUser.username}: ${e.message}")
+                failedUsers.add("${xwikiUser.username}: ${e.message?.take(80)}")
+                usersErrors++
+            }
+        }
+
+        // === Phase 2: Import groups ===
+        val xwikiGroups = xwikiClient.getGroups()
+        var groupsCreated = 0
+        var groupsSkipped = 0
+
+        xwikiGroups.forEach { xwikiGroup ->
+            try {
+                val existing = groupService.findByName(xwikiGroup.name)
+                if (existing != null) { groupsSkipped++; return@forEach }
+                val group = Group(name = xwikiGroup.name, description = "Imported from xWiki", type = GroupType.STATIC)
+                groupService.create(group)
+                groupsCreated++
+            } catch (e: Exception) {
+                logger.warn("[Resync] Group import error: ${e.message}")
+            }
+        }
+
+        // === Phase 3: Sync memberships ===
+        var membersLinked = 0
+
+        xwikiGroups.forEach { xwikiGroup ->
+            try {
+                val group = groupService.findByName(xwikiGroup.name) ?: return@forEach
+                val memberUsernames = xwikiClient.getGroupMembers(xwikiGroup.name)
+                val existingMembers = groupService.getMembers(group.id!!)
+
+                memberUsernames.forEach { memberUsername ->
+                    val user = userService.findByUsername(memberUsername)
+                    if (user != null && user.id!! !in existingMembers) {
+                        try { groupService.addMember(group.id!!, user.id!!); membersLinked++ } catch (_: Exception) {}
+                    }
+                }
+            } catch (e: Exception) {
+                logger.warn("[Resync] Membership sync error: ${e.message}")
+            }
+        }
+
+        logger.info("[Resync] Complete: users(created=$usersCreated, updated=$usersUpdated, errors=$usersErrors), groups(created=$groupsCreated), members(linked=$membersLinked)")
+
+        return ResponseEntity.ok(mapOf(
+            "success" to true,
+            "users" to mapOf("total" to xwikiUsers.size, "created" to usersCreated, "updated" to usersUpdated, "errors" to usersErrors, "failed" to failedUsers),
+            "groups" to mapOf("total" to xwikiGroups.size, "created" to groupsCreated, "skipped" to groupsSkipped),
+            "memberships" to mapOf("linked" to membersLinked),
+        ))
+    }
+
     // --- Helpers ---
 
     private fun buildXWikiClient(body: Map<String, String>): XWikiClient? {
@@ -444,6 +570,21 @@ class ConnectorSyncController(
 
         val client = XWikiClient(baseUrl.trimEnd('/'), username, password)
         return if (client.testConnection()) client else null
+    }
+
+    private fun buildXWikiClientFromConfig(config: String): XWikiClient? {
+        return try {
+            val mapper = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
+            val configMap = mapper.readValue<Map<String, String>>(config)
+            val baseUrl = configMap["baseUrl"] ?: return null
+            val username = configMap["username"] ?: return null
+            val password = configMap["password"] ?: return null
+            val client = XWikiClient(baseUrl.trimEnd('/'), username, password)
+            if (client.testConnection()) client else null
+        } catch (e: Exception) {
+            logger.error("Failed to build xWiki client from stored config: ${e.message}")
+            null
+        }
     }
 
     /**
