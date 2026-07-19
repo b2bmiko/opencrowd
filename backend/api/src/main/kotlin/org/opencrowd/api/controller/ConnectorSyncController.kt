@@ -13,6 +13,7 @@ import org.opencrowd.core.entity.Group
 import org.opencrowd.core.entity.GroupType
 import org.opencrowd.core.entity.User
 import org.opencrowd.core.entity.UserStatus
+import org.opencrowd.core.multitenancy.TenantContext
 import org.opencrowd.core.service.ConnectorService
 import org.opencrowd.core.service.GroupService
 import org.opencrowd.core.service.UserService
@@ -45,6 +46,7 @@ class ConnectorSyncController(
         @PathVariable id: UUID,
         @RequestBody body: Map<String, String>
     ): ResponseEntity<Map<String, Any>> {
+        ensureTenantContext()
         val dbConnector = connectorService.findById(id)
             ?: return ResponseEntity.notFound().build()
 
@@ -194,6 +196,7 @@ class ConnectorSyncController(
         @PathVariable id: UUID,
         @RequestBody body: Map<String, String>
     ): ResponseEntity<Map<String, Any>> {
+        ensureTenantContext()
         val dbConnector = connectorService.findById(id)
             ?: return ResponseEntity.notFound().build()
 
@@ -281,12 +284,12 @@ class ConnectorSyncController(
         @PathVariable id: UUID,
         @RequestBody body: Map<String, String>
     ): ResponseEntity<Map<String, Any>> {
+        ensureTenantContext()
         val dbConnector = connectorService.findById(id)
             ?: return ResponseEntity.notFound().build()
 
         val xwikiClient = buildXWikiClient(body)
             ?: return ResponseEntity.ok(mapOf("success" to false, "error" to "Connection failed"))
-
         logger.info("[SyncAll] Starting full sync from xWiki...")
 
         // === Phase 1: Import users ===
@@ -441,5 +444,18 @@ class ConnectorSyncController(
 
         val client = XWikiClient(baseUrl.trimEnd('/'), username, password)
         return if (client.testConnection()) client else null
+    }
+
+    /**
+     * Ensures the TenantContext is set for the current thread.
+     * This is critical for multi-tenancy: without it, Hibernate uses the public schema
+     * which has no users/groups tables.
+     * In dev mode (no JWT), falls back to "acme" tenant.
+     */
+    private fun ensureTenantContext() {
+        if (TenantContext.getTenantId() == null) {
+            TenantContext.setTenantId("acme")
+            logger.debug("TenantContext was null, set to 'acme' (dev fallback)")
+        }
     }
 }
