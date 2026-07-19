@@ -105,6 +105,23 @@ export function AccessMatrixPage() {
     }
   };
 
+  const pushToApps = async () => {
+    setIsSyncing(true);
+    setSyncResult(null);
+    try {
+      const response = await apiClient.post<{ success: boolean; pushed?: number; failed?: number; error?: string; details?: string[] }>('/access-matrix/push-to-apps');
+      if (response.data.success) {
+        setSyncResult(`Pushed ${response.data.pushed} permission(s) to xWiki.${response.data.failed ? ` ${response.data.failed} failed.` : ''}`);
+      } else {
+        setSyncResult(`Error: ${response.data.error}`);
+      }
+    } catch (e) {
+      setSyncResult('Push failed');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // Get unique permissions (columns)
   const allPermissions = [...new Set(entries.map((e) => e.permission))].filter(p => p !== '(none)').sort();
 
@@ -199,10 +216,15 @@ export function AccessMatrixPage() {
             Unified view of permissions across all connected applications
           </p>
         </div>
-        <Button onClick={syncRights} disabled={isSyncing}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-          {isSyncing ? 'Syncing...' : 'Sync Permissions'}
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={syncRights} disabled={isSyncing}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? 'Syncing...' : 'Sync Permissions'}
+          </Button>
+          <Button variant="outline" onClick={pushToApps} disabled={isSyncing}>
+            Push to xWiki
+          </Button>
+        </div>
       </div>
 
       {syncResult && (

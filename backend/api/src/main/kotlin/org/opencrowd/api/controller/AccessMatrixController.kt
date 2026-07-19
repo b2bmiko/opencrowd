@@ -150,6 +150,63 @@ class AccessMatrixController(
         }
     }
 
+    @PostMapping("/push-to-apps")
+    @Operation(summary = "Push permissions to apps", description = "Writes all manually-granted permissions from OpenCrowd to connected applications")
+    @PreAuthorize("hasRole('manage_connectors')")
+    fun pushToApps(): ResponseEntity<Map<String, Any>> {
+        val entries = accessEntryRepository.findAll().filter { it.source == "manual" && it.allow }
+        if (entries.isEmpty()) {
+            return ResponseEntity.ok(mapOf("success" to true, "pushed" to 0, "message" to "No manual permissions to push"))
+        }
+
+        val connectors = connectorService.findAll().filter { it.connectorType == "xwiki" && it.config != "{}" }
+        if (connectors.isEmpty()) {
+            return ResponseEntity.ok(mapOf("success" to false, "error" to "No xWiki connector with saved credentials"))
+        }
+
+        val connector = connectors.first()
+        val configMap = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
+            .readValue<Map<String, String>>(connector.config)
+        val baseUrl = configMap["baseUrl"] ?: return ResponseEntity.ok(mapOf("success" to false, "error" to "Missing baseUrl"))
+        val username = configMap["username"] ?: return ResponseEntity.ok(mapOf("success" to false, "error" to "Missing username"))
+        val password = configMap["password"] ?: return ResponseEntity.ok(mapOf("success" to false, "error" to "Missing password"))
+
+        val client = org.opencrowd.connectors.xwiki.XWikiClient(baseUrl.trimEnd('/'), username, password)
+
+        var pushed = 0
+        var failed = 0
+        val results = mutableListOf<String>()
+
+        entries.forEach { entry ->
+            try {
+                val spaceName = if (entry.resourceName == "(global)") "(global)" else entry.resourceName
+                val isGroup = entry.principalType == org.opencrowd.core.entity.PrincipalType.GROUP
+                val success = client.addRight(spaceName, entry.principalName, isGroup, listOf(entry.permission))
+                if (success) {
+                    pushed++
+                    // Update source to "synced" since it's now in both places
+                    entry.source = "synced"
+                    accessEntryRepository.save(entry)
+                } else {
+                    failed++
+                    results.add("${entry.principalName}/${entry.permission}: write failed")
+                }
+            } catch (e: Exception) {
+                failed++
+                results.add("${entry.principalName}/${entry.permission}: ${e.message?.take(60)}")
+            }
+        }
+
+        logger.info("Push to apps complete: pushed=$pushed, failed=$failed")
+
+        return ResponseEntity.ok(mapOf(
+            "success" to true,
+            "pushed" to pushed,
+            "failed" to failed,
+            "details" to results,
+        ))
+    }
+
     @PostMapping("/sync-rights")
     @Operation(summary = "Sync rights from xWiki", description = "Fetches permissions from xWiki and stores them in the Access Matrix")
     @PreAuthorize("hasRole('manage_connectors')")
