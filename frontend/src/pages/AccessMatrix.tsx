@@ -371,19 +371,19 @@ export function AccessMatrixPage() {
       )}
 
       {/* Summary */}
-      {entries.length > 0 && (
+      {(entries.length > 0 || allUsers.length > 0 || allGroups.length > 0) && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           <div className="rounded-lg border bg-card p-4">
             <p className="text-sm text-muted-foreground">Total Entries</p>
-            <p className="text-2xl font-bold text-foreground">{entries.length}</p>
+            <p className="text-2xl font-bold text-foreground">{entries.filter(e => e.permission !== '(none)').length}</p>
           </div>
           <div className="rounded-lg border bg-card p-4">
             <p className="text-sm text-muted-foreground">Groups</p>
-            <p className="text-2xl font-bold text-foreground">{[...new Set(entries.filter(e => e.principalType === 'GROUP').map(e => e.principalName))].length}</p>
+            <p className="text-2xl font-bold text-foreground">{allGroups.length || [...new Set(entries.filter(e => e.principalType === 'GROUP').map(e => e.principalName))].length}</p>
           </div>
           <div className="rounded-lg border bg-card p-4">
             <p className="text-sm text-muted-foreground">Users</p>
-            <p className="text-2xl font-bold text-foreground">{[...new Set(entries.filter(e => e.principalType === 'USER').map(e => e.principalName))].length}</p>
+            <p className="text-2xl font-bold text-foreground">{allUsers.length || [...new Set(entries.filter(e => e.principalType === 'USER').map(e => e.principalName))].length}</p>
           </div>
           <div className="rounded-lg border bg-card p-4">
             <p className="text-sm text-muted-foreground">Resources</p>
