@@ -219,9 +219,12 @@ class XWikiClient(
             val principal = "XWiki.$principalName"
             val levelsStr = levels.joinToString(",")
 
+            // Global rights use XWikiGlobalRights class, space-level use XWikiRights
+            val className = if (spaceName == "(global)") "XWiki.XWikiGlobalRights" else "XWiki.XWikiRights"
+
             val xmlBody = buildString {
                 append("""<object xmlns="http://www.xwiki.org">""")
-                append("<className>XWiki.XWikiRights</className>")
+                append("<className>$className</className>")
                 append("""<property name="levels"><value>$levelsStr</value></property>""")
                 if (isGroup) {
                     append("""<property name="groups"><value>$principal</value></property>""")

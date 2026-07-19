@@ -154,7 +154,7 @@ class AccessMatrixController(
     @Operation(summary = "Push permissions to apps", description = "Writes all manually-granted permissions from OpenCrowd to connected applications")
     @PreAuthorize("hasRole('manage_connectors')")
     fun pushToApps(): ResponseEntity<Map<String, Any>> {
-        val entries = accessEntryRepository.findAll().filter { it.source == "manual" && it.allow }
+        val entries = accessEntryRepository.findAll().filter { it.source == "manual" && it.allow && it.permission != "(none)" }
         if (entries.isEmpty()) {
             return ResponseEntity.ok(mapOf("success" to true, "pushed" to 0, "message" to "No manual permissions to push"))
         }
