@@ -53,6 +53,16 @@ class ConnectorSyncController(
         val xwikiClient = buildXWikiClient(body)
             ?: return ResponseEntity.ok(mapOf("success" to false, "error" to "Connection failed"))
 
+        // Save credentials for future one-click syncs
+        val baseUrl = body["baseUrl"]!!
+        val username = body["username"]!!
+        val password = body["password"]!!
+        connectorService.update(id) { connector ->
+            connector.config = """{"baseUrl":"$baseUrl","username":"$username","password":"$password"}"""
+            connector.status = org.opencrowd.core.entity.ConnectorStatus.CONNECTED
+            connector
+        }
+
         val xwikiUsers = xwikiClient.getUsers()
         logger.info("Found ${xwikiUsers.size} users in xWiki to import")
 
@@ -290,6 +300,17 @@ class ConnectorSyncController(
 
         val xwikiClient = buildXWikiClient(body)
             ?: return ResponseEntity.ok(mapOf("success" to false, "error" to "Connection failed"))
+
+        // Save credentials to connector so future syncs don't need manual input
+        val baseUrl = body["baseUrl"]!!
+        val username = body["username"]!!
+        val password = body["password"]!!
+        connectorService.update(id) { connector ->
+            connector.config = """{"baseUrl":"$baseUrl","username":"$username","password":"$password"}"""
+            connector.status = org.opencrowd.core.entity.ConnectorStatus.CONNECTED
+            connector
+        }
+
         logger.info("[SyncAll] Starting full sync from xWiki...")
 
         // === Phase 1: Import users ===
