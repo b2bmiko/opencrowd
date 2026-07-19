@@ -72,8 +72,11 @@ class ConnectorServiceImpl(
 
         connector.healthStatus = newHealth
         connector.lastHealthAt = Instant.now()
-        if (healthy && connector.status == ConnectorStatus.ERROR) {
+        if (healthy && connector.status != ConnectorStatus.CONNECTED) {
             connector.status = ConnectorStatus.CONNECTED
+        }
+        if (!healthy && connector.status == ConnectorStatus.CONNECTED) {
+            connector.status = ConnectorStatus.ERROR
         }
         connectorRepository.save(connector)
 

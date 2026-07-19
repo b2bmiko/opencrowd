@@ -105,10 +105,14 @@ function ConnectorCard({ connector, onRefresh }: { connector: Connector; onRefre
     try {
       const response = await apiClient.post(`/connectors/${connector.id}/resync`);
       setSyncResult(response.data);
+      if (!response.data.success && response.data.error?.includes('credentials')) {
+        // No stored credentials — fall back to manual form
+        setShowSyncDialog(true);
+      }
       onRefresh();
     } catch (e: unknown) {
-      const msg = e && typeof e === 'object' && 'message' in e ? (e as { message: string }).message : 'Sync failed';
-      setSyncResult({ success: false, error: msg });
+      // If resync endpoint doesn't exist (old backend) or fails, show form
+      setShowSyncDialog(true);
     } finally {
       setSyncing(false);
     }
@@ -155,7 +159,7 @@ function ConnectorCard({ connector, onRefresh }: { connector: Connector; onRefre
           <Button variant="outline" size="sm" onClick={runHealthCheck} disabled={checking}>
             {checking ? 'Checking...' : 'Health Check'}
           </Button>
-          <Button variant="outline" size="sm" onClick={connector.status === 'CONNECTED' ? handleQuickSync : () => setShowSyncDialog(true)} disabled={syncing}>
+          <Button variant="outline" size="sm" onClick={handleQuickSync} disabled={syncing}>
             {syncing ? 'Syncing...' : 'Sync'}
           </Button>
           <Button
