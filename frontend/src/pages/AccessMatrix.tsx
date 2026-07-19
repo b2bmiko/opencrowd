@@ -24,11 +24,19 @@ interface GroupModel {
   type?: string;
 }
 
+interface UserModel {
+  id: string;
+  username: string;
+  displayName?: string;
+  email?: string;
+}
+
 type Tab = 'groups' | 'users' | 'spaces' | 'inspect';
 
 export function AccessMatrixPage() {
   const [entries, setEntries] = useState<AccessEntry[]>([]);
   const [allGroups, setAllGroups] = useState<GroupModel[]>([]);
+  const [allUsers, setAllUsers] = useState<UserModel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('groups');
@@ -39,6 +47,7 @@ export function AccessMatrixPage() {
   useEffect(() => {
     loadEntries();
     loadGroups();
+    loadUsers();
   }, []);
 
   const loadEntries = async () => {
@@ -59,6 +68,15 @@ export function AccessMatrixPage() {
       setAllGroups(response.data.content || []);
     } catch (e) {
       console.error('Failed to load groups:', e);
+    }
+  };
+
+  const loadUsers = async () => {
+    try {
+      const response = await apiClient.get<{ content: UserModel[]; totalElements: number }>('/users', { params: { size: 200 } });
+      setAllUsers(response.data.content || []);
+    } catch (e) {
+      console.error('Failed to load users:', e);
     }
   };
 
@@ -151,6 +169,17 @@ export function AccessMatrixPage() {
   if (activeTab === 'groups') {
     allGroups.forEach((group) => {
       const name = group.name;
+      if (searchQuery && !name.toLowerCase().includes(searchQuery.toLowerCase())) return;
+      if (!principalMap.has(name)) {
+        principalMap.set(name, new Map());
+      }
+    });
+  }
+
+  // On users tab, merge all OpenCrowd users so they all appear as rows
+  if (activeTab === 'users') {
+    allUsers.forEach((user) => {
+      const name = user.username;
       if (searchQuery && !name.toLowerCase().includes(searchQuery.toLowerCase())) return;
       if (!principalMap.has(name)) {
         principalMap.set(name, new Map());
