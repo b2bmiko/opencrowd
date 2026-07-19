@@ -575,7 +575,7 @@ class ConnectorSyncController(
     private fun buildXWikiClientFromConfig(config: String): XWikiClient? {
         return try {
             val mapper = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
-            val configMap = mapper.readValue<Map<String, String>>(config)
+            val configMap: Map<String, String> = mapper.readValue(config, object : com.fasterxml.jackson.core.type.TypeReference<Map<String, String>>() {})
             val baseUrl = configMap["baseUrl"] ?: return null
             val username = configMap["username"] ?: return null
             val password = configMap["password"] ?: return null
