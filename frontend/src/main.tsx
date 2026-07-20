@@ -14,6 +14,7 @@ import { ApplicationsPage } from '@/pages/Applications';
 import { AccessMatrixPage } from '@/pages/AccessMatrix';
 import { AccessProfilesPage } from '@/pages/AccessProfiles';
 import { RequestsPage } from '@/pages/Requests';
+import { PublicRequestPage } from '@/pages/PublicRequest';
 import { AuditPage } from '@/pages/Audit';
 import { ReportsPage } from '@/pages/Reports';
 import { SettingsPage } from '@/pages/Settings';
@@ -32,7 +33,7 @@ const queryClient = new QueryClient({
 });
 
 function AppRouter() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, roles } = useAuth();
   const initialize = useAuthStore((s) => s.initialize);
   const path = window.location.pathname;
 
@@ -43,6 +44,11 @@ function AppRouter() {
   // Handle OIDC callback
   if (path === '/callback') {
     return <CallbackPage />;
+  }
+
+  // Public request page — accessible without full admin auth
+  if (path === '/request') {
+    return <PublicRequestPage />;
   }
 
   // Loading state
@@ -95,8 +101,11 @@ function AppRouter() {
 
   const { title, subtitle, component } = getPageContent();
 
+  // Determine admin status from roles
+  const isAdmin = roles.includes('platform_admin') || roles.includes('tenant_admin') || roles.includes('manage_connectors') || roles.includes('manage_users') || roles.length === 0; // default to admin in dev mode (no roles)
+
   return (
-    <MainLayout title={title} subtitle={subtitle} currentPath={path}>
+    <MainLayout title={title} subtitle={subtitle} currentPath={path} isAdmin={isAdmin}>
       {component}
     </MainLayout>
   );

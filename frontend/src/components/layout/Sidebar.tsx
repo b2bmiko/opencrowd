@@ -33,9 +33,14 @@ const navItems: NavItem[] = [
 
 interface SidebarProps {
   currentPath: string;
+  isAdmin?: boolean;
 }
 
-export function Sidebar({ currentPath }: SidebarProps) {
+export function Sidebar({ currentPath, isAdmin = true }: SidebarProps) {
+  const visibleItems = isAdmin ? navItems : navItems.filter(item =>
+    ['/', '/requests', '/access-profiles'].includes(item.href)
+  );
+
   return (
     <aside className="flex h-full w-64 flex-col bg-sidebar text-sidebar-foreground">
       {/* Logo */}
@@ -57,7 +62,7 @@ export function Sidebar({ currentPath }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = currentPath === item.href;
           return (
             <a
