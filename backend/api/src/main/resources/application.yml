@@ -62,6 +62,8 @@ opencrowd:
   version: 0.1.0-SNAPSHOT
   cors:
     allowed-origins: ${OPENCROWD_CORS_ORIGINS:http://localhost:3000}
+  sync:
+    interval-ms: ${OPENCROWD_SYNC_INTERVAL_MS:1800000}  # 30 minutes default
 
 logging:
   level:
