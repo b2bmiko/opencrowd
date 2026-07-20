@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ClipboardList, Plus, Clock, CheckCircle, XCircle, Filter, MessageSquare } from 'lucide-react';
+import { ClipboardList, Plus, Clock, CheckCircle, XCircle, Filter, MessageSquare, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { apiClient } from '@/lib/api-client';
@@ -101,6 +101,14 @@ export function RequestsPage() {
           <Button onClick={() => setShowSubmitForm(true)}>
             <Plus className="mr-2 h-4 w-4" />
             New Request
+          </Button>
+          <Button variant="outline" onClick={() => {
+            const link = `${window.location.origin}/request`;
+            navigator.clipboard.writeText(link);
+            alert(`Link copied!\n\n${link}\n\nShare this with users who need to request access.`);
+          }}>
+            <Link2 className="mr-2 h-4 w-4" />
+            Copy Link
           </Button>
         </div>
       </div>

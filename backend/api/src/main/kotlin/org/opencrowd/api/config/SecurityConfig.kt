@@ -23,6 +23,7 @@ class SecurityConfig {
             .authorizeHttpRequests { auth ->
                 auth
                     .requestMatchers("/api/v1/health", "/api/v1/info").permitAll()
+                    .requestMatchers("/api/v1/requests").permitAll() // Public: anyone can submit access requests
                     .requestMatchers("/actuator/**").permitAll()
                     .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                     .anyRequest().authenticated()
