@@ -12,7 +12,11 @@ import { GroupsPage } from '@/pages/Groups';
 import { GroupDetailPage } from '@/pages/GroupDetail';
 import { ApplicationsPage } from '@/pages/Applications';
 import { AccessMatrixPage } from '@/pages/AccessMatrix';
+import { AccessProfilesPage } from '@/pages/AccessProfiles';
+import { RequestsPage } from '@/pages/Requests';
 import { AuditPage } from '@/pages/Audit';
+import { ReportsPage } from '@/pages/Reports';
+import { SettingsPage } from '@/pages/Settings';
 import { LoginPage } from '@/pages/Login';
 import { CallbackPage } from '@/pages/Callback';
 import './globals.css';
@@ -74,8 +78,16 @@ function AppRouter() {
         return { title: 'Applications', subtitle: 'Manage connected applications', component: <ApplicationsPage /> };
       case '/access-matrix':
         return { title: 'Access Matrix', subtitle: 'Unified cross-application permission view', component: <AccessMatrixPage /> };
+      case '/access-profiles':
+        return { title: 'Access Profiles', subtitle: 'Predefined permission templates', component: <AccessProfilesPage /> };
+      case '/requests':
+        return { title: 'Requests', subtitle: 'Access request workflow', component: <RequestsPage /> };
       case '/audit':
         return { title: 'Audit', subtitle: 'Track all governance actions', component: <AuditPage /> };
+      case '/reports':
+        return { title: 'Reports', subtitle: 'Governance insights and compliance', component: <ReportsPage /> };
+      case '/settings':
+        return { title: 'Settings', subtitle: 'Configure your OpenCrowd tenant', component: <SettingsPage /> };
       default:
         return { title: 'Dashboard', subtitle: 'Unified view of your governance landscape', component: <DashboardPage /> };
     }
