@@ -64,6 +64,8 @@ opencrowd:
     allowed-origins: ${OPENCROWD_CORS_ORIGINS:http://localhost:3000}
   sync:
     interval-ms: ${OPENCROWD_SYNC_INTERVAL_MS:1800000}  # 30 minutes default
+  ai:
+    mistral-api-key: ${OPENCROWD_MISTRAL_API_KEY:}  # Set to enable Mistral AI for Kai assistant
 
 logging:
   level:

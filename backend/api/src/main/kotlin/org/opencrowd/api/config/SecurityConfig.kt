@@ -24,6 +24,7 @@ class SecurityConfig {
                 auth
                     .requestMatchers("/api/v1/health", "/api/v1/info").permitAll()
                     .requestMatchers("/api/v1/requests").permitAll() // Public: anyone can submit access requests
+                    .requestMatchers("/api/v1/assistant/**").permitAll() // Public: Kai assistant
                     .requestMatchers("/actuator/**").permitAll()
                     .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                     .anyRequest().authenticated()

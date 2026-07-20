@@ -104,7 +104,13 @@ export function RequestsPage() {
           </Button>
           <Button variant="outline" onClick={() => {
             const link = `${window.location.origin}/request`;
-            navigator.clipboard.writeText(link);
+            // Fallback for non-HTTPS (navigator.clipboard requires secure context)
+            const textarea = document.createElement('textarea');
+            textarea.value = link;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
             alert(`Link copied!\n\n${link}\n\nShare this with users who need to request access.`);
           }}>
             <Link2 className="mr-2 h-4 w-4" />
