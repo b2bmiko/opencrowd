@@ -9,6 +9,7 @@ import {
   ClipboardList,
   BarChart3,
   Settings,
+  Sparkles,
 } from 'lucide-react';
 
 interface NavItem {
@@ -34,9 +35,10 @@ const navItems: NavItem[] = [
 interface SidebarProps {
   currentPath: string;
   isAdmin?: boolean;
+  onOpenKai?: () => void;
 }
 
-export function Sidebar({ currentPath, isAdmin = true }: SidebarProps) {
+export function Sidebar({ currentPath, isAdmin = true, onOpenKai }: SidebarProps) {
   const visibleItems = isAdmin ? navItems : navItems.filter(item =>
     ['/', '/requests', '/access-profiles'].includes(item.href)
   );
@@ -82,6 +84,17 @@ export function Sidebar({ currentPath, isAdmin = true }: SidebarProps) {
           );
         })}
       </nav>
+
+      {/* Kai Assistant */}
+      <div className="px-3 pb-2">
+        <button
+          onClick={onOpenKai}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-foreground/10 hover:text-sidebar-foreground"
+        >
+          <Sparkles className="h-5 w-5" />
+          Ask Kai
+        </button>
+      </div>
 
       {/* Footer */}
       <div className="border-t border-sidebar-foreground/10 px-6 py-4">

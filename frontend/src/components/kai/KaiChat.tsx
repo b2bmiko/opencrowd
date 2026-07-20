@@ -16,8 +16,7 @@ const WELCOME_MESSAGE: Message = {
   timestamp: new Date(),
 };
 
-export function KaiChat() {
-  const [isOpen, setIsOpen] = useState(false);
+export function KaiChat({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
@@ -78,18 +77,6 @@ export function KaiChat() {
 
   return (
     <>
-      {/* Chat bubble trigger */}
-      {!isOpen && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 left-72 z-50 flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-95"
-          title="Ask Kai — your AI assistant"
-        >
-          <Sparkles className="h-4 w-4" />
-          <span className="text-sm font-medium">Ask Kai</span>
-        </button>
-      )}
-
       {/* Chat panel */}
       {isOpen && (
         <div className="fixed bottom-6 left-72 z-50 flex h-[32rem] w-96 flex-col rounded-xl border bg-card shadow-2xl">
@@ -102,7 +89,7 @@ export function KaiChat() {
                 <p className="text-xs text-primary-foreground/70">AI Governance Assistant</p>
               </div>
             </div>
-            <button onClick={() => setIsOpen(false)} className="rounded p-1 text-primary-foreground/70 hover:text-primary-foreground">
+            <button onClick={onClose} className="rounded p-1 text-primary-foreground/70 hover:text-primary-foreground">
               <X className="h-4 w-4" />
             </button>
           </div>
