@@ -15,19 +15,20 @@ interface NavItem {
   label: string;
   icon: React.ElementType;
   href: string;
+  tooltip: string;
 }
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard', icon: LayoutDashboard, href: '/' },
-  { label: 'Applications', icon: Network, href: '/applications' },
-  { label: 'Identity', icon: Users, href: '/identity' },
-  { label: 'Groups', icon: Group, href: '/groups' },
-  { label: 'Access Matrix', icon: Shield, href: '/access-matrix' },
-  { label: 'Access Profiles', icon: FileCheck, href: '/access-profiles' },
-  { label: 'Requests', icon: ClipboardList, href: '/requests' },
-  { label: 'Audit', icon: ClipboardList, href: '/audit' },
-  { label: 'Reports', icon: BarChart3, href: '/reports' },
-  { label: 'Settings', icon: Settings, href: '/settings' },
+  { label: 'Dashboard', icon: LayoutDashboard, href: '/', tooltip: 'Overview of your governance landscape' },
+  { label: 'Applications', icon: Network, href: '/applications', tooltip: 'Connect and manage external apps (xWiki, OpenProject, etc.)' },
+  { label: 'Identity', icon: Users, href: '/identity', tooltip: 'Manage user accounts and lifecycle' },
+  { label: 'Groups', icon: Group, href: '/groups', tooltip: 'Organize users into teams and roles' },
+  { label: 'Access Matrix', icon: Shield, href: '/access-matrix', tooltip: 'View and assign permissions across all apps' },
+  { label: 'Access Profiles', icon: FileCheck, href: '/access-profiles', tooltip: 'Predefined permission templates for quick onboarding' },
+  { label: 'Requests', icon: ClipboardList, href: '/requests', tooltip: 'Access requests submitted by users — approve or reject' },
+  { label: 'Audit', icon: ClipboardList, href: '/audit', tooltip: 'Full history of all actions and changes' },
+  { label: 'Reports', icon: BarChart3, href: '/reports', tooltip: 'Governance score, compliance, and analytics' },
+  { label: 'Settings', icon: Settings, href: '/settings', tooltip: 'Configure sync, defaults, and tenant settings' },
 ];
 
 interface SidebarProps {
@@ -62,6 +63,7 @@ export function Sidebar({ currentPath }: SidebarProps) {
             <a
               key={item.href}
               href={item.href}
+              title={item.tooltip}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 isActive
