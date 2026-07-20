@@ -212,23 +212,40 @@ interface GroupOption {
 }
 
 function OnboardUserDialog({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [step, setStep] = useState<'details' | 'groups' | 'result'>('details');
+  const [step, setStep] = useState<'details' | 'profile' | 'result'>('details');
   const [form, setForm] = useState({ username: '', email: '', firstName: '', lastName: '', department: '', title: '' });
   const [groups, setGroups] = useState<GroupOption[]>([]);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+  const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
+  const [profiles, setProfiles] = useState<{ id: string; name: string; description: string; groups: string[]; permissions: string[] }[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<{ success: boolean; username: string; groupsAssigned: string[]; provisioning: { connector: string; action: string; message: string }[]; errors: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load groups when we reach step 2
-  const loadGroups = async () => {
+  // Load groups and profiles when moving to step 2
+  const loadProfilesAndGroups = async () => {
     try {
       const response = await apiClient.get<{ content: GroupOption[] }>('/groups', { params: { size: 200 } });
       setGroups(response.data.content || []);
     } catch (e) {
       setGroups([]);
     }
-    setStep('groups');
+    // Load profiles from localStorage
+    try {
+      const stored = localStorage.getItem('opencrowd_access_profiles');
+      if (stored) setProfiles(JSON.parse(stored));
+    } catch {}
+    setStep('profile');
+  };
+
+  const applyProfile = (profileId: string) => {
+    const profile = profiles.find(p => p.id === profileId);
+    if (profile) {
+      setSelectedProfile(profileId);
+      // Map profile group names to group IDs
+      const groupIds = groups.filter(g => profile.groups.includes(g.name)).map(g => g.id);
+      setSelectedGroups(groupIds);
+    }
   };
 
   const handleSubmit = async () => {
@@ -255,12 +272,12 @@ function OnboardUserDialog({ onClose, onSuccess }: { onClose: () => void; onSucc
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-lg rounded-lg border bg-card p-6 shadow-lg">
+      <div className="w-full max-w-lg rounded-lg border bg-card p-6 shadow-lg max-h-[90vh] overflow-y-auto">
         {step === 'details' && (
           <>
             <h2 className="text-lg font-semibold text-foreground">Onboard New User</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Create user, assign to groups, and provision across connected applications.
+              Create user, assign an access profile, and provision across connected applications.
             </p>
 
             {error && <div className="mt-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
@@ -334,43 +351,77 @@ function OnboardUserDialog({ onClose, onSuccess }: { onClose: () => void; onSucc
 
             <div className="mt-6 flex justify-end gap-3">
               <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-              <Button size="sm" onClick={loadGroups} disabled={!form.username || !form.email}>
-                Next: Assign Groups
+              <Button size="sm" onClick={loadProfilesAndGroups} disabled={!form.username || !form.email}>
+                Next: Select Profile
               </Button>
             </div>
           </>
         )}
 
-        {step === 'groups' && (
+        {step === 'profile' && (
           <>
-            <h2 className="text-lg font-semibold text-foreground">Assign Groups</h2>
+            <h2 className="text-lg font-semibold text-foreground">Select Access Profile</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Select groups for <strong>{form.firstName || form.username}</strong> (optional).
-              The user will also be provisioned to all connected applications.
+              Choose a profile for <strong>{form.firstName || form.username}</strong> to auto-assign groups and permissions. Or skip to assign manually.
             </p>
 
-            <div className="mt-4 max-h-60 overflow-y-auto space-y-1 rounded-md border p-3">
-              {groups.length > 0 ? groups.map((group) => (
-                <label key={group.id} className="flex items-center gap-2 py-1 text-sm text-foreground hover:bg-muted/30 rounded px-2">
-                  <input
-                    type="checkbox"
-                    checked={selectedGroups.includes(group.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) setSelectedGroups([...selectedGroups, group.id]);
-                      else setSelectedGroups(selectedGroups.filter((id) => id !== group.id));
-                    }}
-                    className="rounded border"
-                  />
-                  {group.name}
-                </label>
-              )) : (
-                <p className="text-sm text-muted-foreground">No groups available</p>
-              )}
+            {/* Profile Cards */}
+            {profiles.length > 0 && (
+              <div className="mt-4 space-y-2 max-h-48 overflow-y-auto">
+                {profiles.map((profile) => (
+                  <label
+                    key={profile.id}
+                    className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors ${
+                      selectedProfile === profile.id ? 'border-primary bg-primary/5' : 'hover:bg-muted/30'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="profile"
+                      checked={selectedProfile === profile.id}
+                      onChange={() => applyProfile(profile.id)}
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-foreground">{profile.name}</p>
+                      <p className="text-xs text-muted-foreground">{profile.description}</p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {profile.groups.slice(0, 3).map(g => (
+                          <span key={g} className="inline-block rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{g}</span>
+                        ))}
+                        {profile.groups.length > 3 && <span className="text-xs text-muted-foreground">+{profile.groups.length - 3} more</span>}
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {/* Manual group selection */}
+            <div className="mt-4">
+              <p className="text-sm font-medium text-foreground">
+                {selectedProfile ? 'Groups (from profile):' : 'Or select groups manually:'}
+              </p>
+              <div className="mt-2 max-h-40 overflow-y-auto space-y-1 rounded-md border p-2">
+                {groups.length > 0 ? groups.map((group) => (
+                  <label key={group.id} className="flex items-center gap-2 py-0.5 text-sm text-foreground hover:bg-muted/30 rounded px-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedGroups.includes(group.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedGroups([...selectedGroups, group.id]);
+                        else { setSelectedGroups(selectedGroups.filter((id) => id !== group.id)); setSelectedProfile(null); }
+                      }}
+                      className="rounded border"
+                    />
+                    {group.name}
+                  </label>
+                )) : (
+                  <p className="text-sm text-muted-foreground p-2">No groups available</p>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{selectedGroups.length} group(s) selected</p>
             </div>
-
-            <p className="mt-3 text-xs text-muted-foreground">
-              {selectedGroups.length} group(s) selected
-            </p>
 
             <div className="mt-6 flex justify-between">
               <Button variant="outline" size="sm" onClick={() => setStep('details')}>Back</Button>
