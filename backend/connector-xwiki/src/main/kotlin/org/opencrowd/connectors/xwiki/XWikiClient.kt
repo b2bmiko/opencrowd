@@ -379,6 +379,72 @@ class XWikiClient(
     }
 
     /**
+     * Add a user to a group in xWiki.
+     * Creates an XWiki.XWikiGroups object on the group's page with the member reference.
+     */
+    fun addGroupMember(groupName: String, username: String, wiki: String = "xwiki"): Boolean {
+        return try {
+            val xmlBody = buildString {
+                append("""<object xmlns="http://www.xwiki.org">""")
+                append("<className>XWiki.XWikiGroups</className>")
+                append("""<property name="member"><value>XWiki.$username</value></property>""")
+                append("</object>")
+            }
+
+            val path = "/rest/wikis/$wiki/spaces/XWiki/pages/$groupName/objects"
+            val response = post(path, xmlBody)
+
+            if (response.statusCode() in 200..299) {
+                logger.info("Added member $username to group $groupName in xWiki")
+                true
+            } else {
+                logger.error("Failed to add member to xWiki group: HTTP ${response.statusCode()}")
+                false
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to add group member in xWiki: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Remove a user from a group in xWiki.
+     * Finds and deletes the XWiki.XWikiGroups object matching the member.
+     */
+    fun removeGroupMember(groupName: String, username: String, wiki: String = "xwiki"): Boolean {
+        return try {
+            val basePath = "/rest/wikis/$wiki/spaces/XWiki/pages/$groupName/objects/XWiki.XWikiGroups"
+            val listResponse = get(basePath)
+            if (listResponse.statusCode() != 200) return false
+
+            val body = listResponse.body()
+            val numberRegex = "<number>(\\d+)</number>".toRegex()
+            val headlineRegex = "<headline>(.*?)</headline>".toRegex()
+
+            val numbers = numberRegex.findAll(body).map { it.groupValues[1].toInt() }.toList()
+            val headlines = headlineRegex.findAll(body).map { it.groupValues[1] }.toList()
+
+            // Find the object with matching member
+            numbers.forEachIndexed { index, num ->
+                val headline = headlines.getOrNull(index) ?: ""
+                if (headline == "XWiki.$username" || headline == username) {
+                    val deleteResponse = delete("$basePath/$num")
+                    if (deleteResponse.statusCode() in 200..299) {
+                        logger.info("Removed member $username from group $groupName in xWiki")
+                        return true
+                    }
+                }
+            }
+
+            logger.warn("Member $username not found in xWiki group $groupName")
+            false
+        } catch (e: Exception) {
+            logger.error("Failed to remove group member in xWiki: ${e.message}")
+            false
+        }
+    }
+
+    /**
      * Fetch rights/permissions for a specific space.
      * Returns both XWikiRights (space-level) entries.
      */

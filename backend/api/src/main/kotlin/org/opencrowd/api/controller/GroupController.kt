@@ -1,5 +1,7 @@
 package org.opencrowd.api.controller
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
@@ -7,9 +9,14 @@ import org.opencrowd.api.dto.ApiResponse
 import org.opencrowd.api.dto.CreateGroupRequest
 import org.opencrowd.api.dto.GroupResponse
 import org.opencrowd.api.dto.PageResponse
+import org.opencrowd.connectors.xwiki.XWikiClient
+import org.opencrowd.core.entity.ConnectorStatus
 import org.opencrowd.core.entity.Group
 import org.opencrowd.core.entity.GroupType
+import org.opencrowd.core.service.ConnectorService
 import org.opencrowd.core.service.GroupService
+import org.opencrowd.core.service.UserService
+import org.slf4j.LoggerFactory
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.http.HttpStatus
@@ -31,7 +38,12 @@ import java.util.UUID
 class GroupController(
     private val groupService: GroupService,
     private val groupRepository: org.opencrowd.core.repository.GroupRepository,
+    private val userService: UserService,
+    private val connectorService: ConnectorService,
 ) {
+
+    private val logger = LoggerFactory.getLogger(GroupController::class.java)
+    private val objectMapper = jacksonObjectMapper()
 
     @GetMapping
     @Operation(summary = "List groups", description = "Returns a paginated list of groups")
@@ -94,8 +106,18 @@ class GroupController(
         @RequestBody body: Map<String, List<String>>
     ): ResponseEntity<Void> {
         val userIds = body["userIds"] ?: throw IllegalArgumentException("Missing 'userIds' field")
+        val group = groupService.findById(id)
+
         userIds.forEach { userId ->
             groupService.addMember(id, UUID.fromString(userId))
+
+            // Write back to xWiki
+            if (group != null) {
+                val user = userService.findById(UUID.fromString(userId))
+                if (user != null) {
+                    writeGroupMemberToXWiki(group.name, user.username, "add")
+                }
+            }
         }
         return ResponseEntity.ok().build()
     }
@@ -107,7 +129,15 @@ class GroupController(
         @PathVariable id: UUID,
         @PathVariable userId: UUID
     ): ResponseEntity<Void> {
+        val group = groupService.findById(id)
+        val user = userService.findById(userId)
+
         groupService.removeMember(id, userId)
+
+        // Write back to xWiki
+        if (group != null && user != null) {
+            writeGroupMemberToXWiki(group.name, user.username, "remove")
+        }
         return ResponseEntity.noContent().build()
     }
 
@@ -137,4 +167,36 @@ class GroupController(
         createdAt = createdAt.toString(),
         updatedAt = updatedAt.toString(),
     )
+
+    /**
+     * Write group membership changes to xWiki using stored connector credentials.
+     */
+    private fun writeGroupMemberToXWiki(groupName: String, username: String, action: String) {
+        try {
+            val connectors = connectorService.findAll()
+                .filter { it.connectorType == "xwiki" && it.status == ConnectorStatus.CONNECTED && it.config != "{}" }
+            if (connectors.isEmpty()) return
+
+            val connector = connectors.first()
+            val configMap = objectMapper.readValue<Map<String, String>>(connector.config)
+            val baseUrl = configMap["baseUrl"] ?: return
+            val connUser = configMap["username"] ?: return
+            val connPass = configMap["password"] ?: return
+
+            val client = XWikiClient(baseUrl.trimEnd('/'), connUser, connPass)
+            val success = if (action == "add") {
+                client.addGroupMember(groupName, username)
+            } else {
+                client.removeGroupMember(groupName, username)
+            }
+
+            if (success) {
+                logger.info("xWiki write-back: $action member $username in group $groupName")
+            } else {
+                logger.warn("xWiki write-back failed: $action member $username in group $groupName")
+            }
+        } catch (e: Exception) {
+            logger.warn("xWiki group membership write-back error: ${e.message}")
+        }
+    }
 }
