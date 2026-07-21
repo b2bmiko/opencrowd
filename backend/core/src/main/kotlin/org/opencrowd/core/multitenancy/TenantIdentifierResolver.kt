@@ -13,7 +13,9 @@ import org.springframework.stereotype.Component
 class TenantIdentifierResolver : CurrentTenantIdentifierResolver<String>, HibernatePropertiesCustomizer {
 
     companion object {
-        const val DEFAULT_SCHEMA = "public"
+        // Default to tenant_acme for single-tenant deployments.
+        // In multi-tenant mode, this should remain "public" and TenantFilter must always set the context.
+        const val DEFAULT_SCHEMA = "acme"
     }
 
     override fun resolveCurrentTenantIdentifier(): String =
