@@ -27,17 +27,19 @@ class TenantConnectionProvider(
 
     override fun getConnection(tenantIdentifier: String): Connection {
         val connection = dataSource.connection
+        // For single-tenant deployment, the JDBC URL's currentSchema handles the schema.
+        // Only override if we're explicitly switching to a different tenant.
         val schema = resolveSchema(tenantIdentifier)
-        connection.createStatement().use { stmt ->
-            stmt.execute("SET search_path TO $schema, public")
+        if (schema != "public") {
+            connection.createStatement().use { stmt ->
+                stmt.execute("SET search_path TO $schema, public")
+            }
         }
         return connection
     }
 
     override fun releaseConnection(tenantIdentifier: String, connection: Connection) {
-        connection.createStatement().use { stmt ->
-            stmt.execute("SET search_path TO public")
-        }
+        // Don't reset to public — let the connection pool handle it
         connection.close()
     }
 
