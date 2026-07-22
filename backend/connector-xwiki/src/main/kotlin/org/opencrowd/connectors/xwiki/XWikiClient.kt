@@ -7,6 +7,7 @@ import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.slf4j.LoggerFactory
 import java.net.URI
+import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -31,6 +32,9 @@ class XWikiClient(
 
     private val authHeader: String = "Basic " + Base64.getEncoder()
         .encodeToString("$username:$password".toByteArray())
+
+    /** URL-encode a space name to handle spaces, brackets, and other special characters */
+    private fun encodeSpace(name: String): String = URLEncoder.encode(name, "UTF-8").replace("+", "%20")
 
     /**
      * Test the connection to xWiki.
@@ -240,7 +244,7 @@ class XWikiClient(
             val path = if (spaceName == "(global)") {
                 "/rest/wikis/$wiki/spaces/XWiki/pages/XWikiPreferences/objects"
             } else {
-                "/rest/wikis/$wiki/spaces/$spaceName/pages/WebPreferences/objects"
+                "/rest/wikis/$wiki/spaces/${encodeSpace(spaceName)}/pages/WebPreferences/objects"
             }
 
             val response = post(path, xmlBody)
@@ -269,7 +273,7 @@ class XWikiClient(
             val basePath = if (spaceName == "(global)") {
                 "/rest/wikis/$wiki/spaces/XWiki/pages/XWikiPreferences/objects/XWiki.XWikiGlobalRights"
             } else {
-                "/rest/wikis/$wiki/spaces/$spaceName/pages/WebPreferences/objects/XWiki.XWikiRights"
+                "/rest/wikis/$wiki/spaces/${encodeSpace(spaceName)}/pages/WebPreferences/objects/XWiki.XWikiRights"
             }
 
             // List all rights objects to find the matching one
@@ -452,14 +456,14 @@ class XWikiClient(
         val rights = mutableListOf<XWikiRight>()
 
         // Fetch space-level rights
-        val response = get("/rest/wikis/$wiki/spaces/$spaceName/pages/WebPreferences/objects/XWiki.XWikiRights")
+        val response = get("/rest/wikis/$wiki/spaces/${encodeSpace(spaceName)}/pages/WebPreferences/objects/XWiki.XWikiRights")
         if (response.statusCode() == 200 && !response.body().contains("<objects xmlns=\"http://www.xwiki.org\"/>")) {
             // Get the count of rights objects
             val numberRegex = "<number>(\\d+)</number>".toRegex()
             val numbers = numberRegex.findAll(response.body()).map { it.groupValues[1].toInt() }.toList()
 
             numbers.forEach { num ->
-                val detailResponse = get("/rest/wikis/$wiki/spaces/$spaceName/pages/WebPreferences/objects/XWiki.XWikiRights/$num")
+                val detailResponse = get("/rest/wikis/$wiki/spaces/${encodeSpace(spaceName)}/pages/WebPreferences/objects/XWiki.XWikiRights/$num")
                 if (detailResponse.statusCode() == 200) {
                     val right = parseRightObject(detailResponse.body(), spaceName)
                     if (right != null) rights.add(right)
