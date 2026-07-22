@@ -145,7 +145,7 @@ class OpenProjectConnector : Connector {
         val c = client ?: return ConnectorResult.Failure(ErrorCode.CONNECTION_FAILED, "Not connected")
 
         val projectId = resource.id.toIntOrNull()
-            ?: return ConnectorResult.Failure(ErrorCode.INVALID_INPUT, "Invalid project ID: ${resource.id}")
+            ?: return ConnectorResult.Failure(ErrorCode.VALIDATION_ERROR, "Invalid project ID: ${resource.id}")
 
         val memberships = c.getMemberships(projectId)
         val permissions = memberships.map { membership ->
