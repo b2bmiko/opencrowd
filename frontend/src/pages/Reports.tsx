@@ -19,10 +19,26 @@ interface ReportStats {
   governanceScore: number;
 }
 
+interface UserInfo {
+  username: string;
+  displayName?: string;
+  status: string;
+  email?: string;
+}
+
+interface PermissionEntry {
+  principalName: string;
+  principalType: string;
+  permission: string;
+  resourceName: string;
+}
+
 export function ReportsPage() {
   const [stats, setStats] = useState<ReportStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeReport, setActiveReport] = useState<'overview' | 'users' | 'permissions' | 'compliance'>('overview');
+  const [activeReport, setActiveReport] = useState<'overview' | 'users' | 'permissions' | 'compliance' | 'alerts'>('overview');
+  const [allUsers, setAllUsers] = useState<UserInfo[]>([]);
+  const [allEntries, setAllEntries] = useState<PermissionEntry[]>([]);
 
   useEffect(() => {
     loadStats();
@@ -32,13 +48,16 @@ export function ReportsPage() {
     setIsLoading(true);
     try {
       // Try real API first
-      const usersResp = await apiClient.get<{ content: { status: string }[]; totalElements: number }>('/users', { params: { size: 200 } });
+      const usersResp = await apiClient.get<{ content: { status: string; username: string; displayName?: string; email?: string }[]; totalElements: number }>('/users', { params: { size: 200 } });
       const groupsResp = await apiClient.get<{ content: { id: string }[]; totalElements: number }>('/groups', { params: { size: 200 } });
-      const matrixResp = await apiClient.get<{ entries: { principalType: string; permission: string; principalName: string }[]; count: number }>('/access-matrix');
+      const matrixResp = await apiClient.get<{ entries: { principalType: string; permission: string; principalName: string; resourceName: string }[]; count: number }>('/access-matrix');
 
       const users = usersResp.data.content || [];
       const groups = groupsResp.data.content || [];
       const entries = matrixResp.data.entries || [];
+
+      setAllUsers(users.map(u => ({ username: u.username, displayName: u.displayName, status: u.status, email: u.email })));
+      setAllEntries(entries.filter(e => e.permission !== '(none)').map(e => ({ principalName: e.principalName, principalType: e.principalType, permission: e.permission, resourceName: e.resourceName })));
 
       const activeUsers = users.filter(u => u.status === 'ACTIVE').length;
       const offboardedUsers = users.filter(u => u.status === 'OFFBOARDED').length;
@@ -171,6 +190,7 @@ export function ReportsPage() {
             { id: 'users', label: 'User Analysis' },
             { id: 'permissions', label: 'Permission Analysis' },
             { id: 'compliance', label: 'Compliance' },
+            { id: 'alerts', label: 'Governance Alerts' },
           ] as { id: typeof activeReport; label: string }[]).map((tab) => (
             <button
               key={tab.id}
@@ -299,6 +319,10 @@ export function ReportsPage() {
           </div>
         </div>
       )}
+
+      {activeReport === 'alerts' && (
+        <GovernanceAlerts users={allUsers} entries={allEntries} />
+      )}
     </div>
   );
 }
@@ -340,6 +364,166 @@ function ComplianceItem({ label, met }: { label: string; met: boolean }) {
         <AlertTriangle className="h-5 w-5 text-amber-500" />
       )}
       <span className={`text-sm ${met ? 'text-foreground' : 'text-amber-700'}`}>{label}</span>
+    </div>
+  );
+}
+
+function GovernanceAlerts({ users, entries }: { users: UserInfo[]; entries: PermissionEntry[] }) {
+  const [expandedAlert, setExpandedAlert] = useState<string | null>(null);
+
+  // Compute alerts
+  const usersWithPerms = new Set(entries.filter(e => e.principalType === 'USER').map(e => e.principalName));
+  const usersWithNoPerms = users.filter(u => !usersWithPerms.has(u.username));
+
+  const permCountByUser = new Map<string, number>();
+  entries.filter(e => e.principalType === 'USER').forEach(e => {
+    permCountByUser.set(e.principalName, (permCountByUser.get(e.principalName) || 0) + 1);
+  });
+  const excessivePermUsers = [...permCountByUser.entries()].filter(([, count]) => count >= 5).map(([name, count]) => ({ name, count }));
+
+  const inactiveWithAccess = users.filter(u => (u.status === 'DISABLED' || u.status === 'LOCKED') && usersWithPerms.has(u.username));
+
+  const incompleteProfiles = users.filter(u => !u.email || u.email.includes('@imported.local'));
+
+  const alerts = [
+    { id: 'no-perms', severity: 'medium' as const, title: `${usersWithNoPerms.length} users have no permissions assigned`, count: usersWithNoPerms.length, show: usersWithNoPerms.length > 0 },
+    { id: 'excessive', severity: 'high' as const, title: `${excessivePermUsers.length} users have excessive permissions (5+)`, count: excessivePermUsers.length, show: excessivePermUsers.length > 0 },
+    { id: 'inactive-access', severity: 'high' as const, title: `${inactiveWithAccess.length} disabled users still have active permissions`, count: inactiveWithAccess.length, show: inactiveWithAccess.length > 0 },
+    { id: 'incomplete', severity: 'low' as const, title: `${incompleteProfiles.length} users have incomplete profiles (missing/placeholder email)`, count: incompleteProfiles.length, show: incompleteProfiles.length > 0 },
+  ].filter(a => a.show);
+
+  const severityStyle = { high: 'border-red-200 bg-red-50', medium: 'border-amber-200 bg-amber-50', low: 'border-blue-200 bg-blue-50' };
+  const severityBadge = { high: 'destructive' as const, medium: 'warning' as const, low: 'secondary' as const };
+
+  if (alerts.length === 0) {
+    return (
+      <div className="rounded-lg border bg-emerald-50 p-6 text-center">
+        <CheckCircle className="mx-auto h-8 w-8 text-emerald-500" />
+        <p className="mt-2 font-semibold text-emerald-800">All Clear</p>
+        <p className="text-sm text-emerald-600">No governance alerts. Your identity posture is healthy.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h4 className="font-semibold text-foreground">Governance Alerts</h4>
+          <p className="text-sm text-muted-foreground">Actionable issues detected in your identity governance. Click to see details and take action.</p>
+        </div>
+        <Badge variant="warning">{alerts.length} alert(s)</Badge>
+      </div>
+
+      {alerts.map((alert) => (
+        <div key={alert.id} className={`rounded-lg border ${severityStyle[alert.severity]}`}>
+          <div
+            className="flex items-center justify-between p-4 cursor-pointer"
+            onClick={() => setExpandedAlert(expandedAlert === alert.id ? null : alert.id)}
+          >
+            <div className="flex items-center gap-3">
+              <AlertTriangle className={`h-5 w-5 ${alert.severity === 'high' ? 'text-red-500' : alert.severity === 'medium' ? 'text-amber-500' : 'text-blue-500'}`} />
+              <span className="text-sm font-medium text-foreground">{alert.title}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant={severityBadge[alert.severity]}>{alert.severity}</Badge>
+              <span className="text-xs text-muted-foreground">Click to expand</span>
+            </div>
+          </div>
+
+          {expandedAlert === alert.id && (
+            <div className="border-t px-4 pb-4 pt-3">
+              {alert.id === 'no-perms' && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">These users exist in OpenCrowd but have no permissions in any application:</p>
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {usersWithNoPerms.map(u => (
+                      <div key={u.username} className="flex items-center justify-between rounded-md bg-white p-2 text-sm">
+                        <div>
+                          <span className="font-medium text-foreground">{u.displayName || u.username}</span>
+                          <span className="ml-2 text-muted-foreground">@{u.username}</span>
+                          {u.status !== 'ACTIVE' && <Badge variant="secondary" className="ml-2 text-xs">{u.status}</Badge>}
+                        </div>
+                        <div className="flex gap-1">
+                          <a href={`/access-matrix`} className="text-xs text-primary hover:underline">Assign permissions</a>
+                          <span className="text-muted-foreground">|</span>
+                          <a href={`/identity/${u.username}`} className="text-xs text-primary hover:underline">View profile</a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">Recommendation: Assign an Access Profile or offboard users who no longer need access.</p>
+                </div>
+              )}
+
+              {alert.id === 'excessive' && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">These users have 5 or more permissions — review for over-privilege:</p>
+                  <div className="max-h-48 overflow-y-auto space-y-2">
+                    {excessivePermUsers.map(u => {
+                      const userPerms = entries.filter(e => e.principalName === u.name && e.principalType === 'USER');
+                      return (
+                        <div key={u.name} className="rounded-md bg-white p-3">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-foreground">{u.name}</span>
+                            <span className="text-xs text-red-600 font-medium">{u.count} permissions</span>
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {userPerms.map((p, i) => (
+                              <span key={i} className="inline-block rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-700">
+                                {p.permission} ({p.resourceName})
+                              </span>
+                            ))}
+                          </div>
+                          <a href="/access-matrix" className="mt-1 inline-block text-xs text-primary hover:underline">Review in Access Matrix</a>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">Recommendation: Apply principle of least privilege. Remove permissions not needed for the user's role.</p>
+                </div>
+              )}
+
+              {alert.id === 'inactive-access' && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">These users are disabled/locked but still have active permissions:</p>
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {inactiveWithAccess.map(u => (
+                      <div key={u.username} className="flex items-center justify-between rounded-md bg-white p-2 text-sm">
+                        <div>
+                          <span className="font-medium text-foreground">{u.displayName || u.username}</span>
+                          <Badge variant="secondary" className="ml-2 text-xs">{u.status}</Badge>
+                        </div>
+                        <a href={`/identity/${u.username}`} className="text-xs text-primary hover:underline">Offboard</a>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">Recommendation: Offboard these users to revoke all access and deprovision from connected apps.</p>
+                </div>
+              )}
+
+              {alert.id === 'incomplete' && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">These users have missing or placeholder email addresses:</p>
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {incompleteProfiles.slice(0, 20).map(u => (
+                      <div key={u.username} className="flex items-center justify-between rounded-md bg-white p-2 text-sm">
+                        <div>
+                          <span className="font-medium text-foreground">{u.username}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">{u.email}</span>
+                        </div>
+                        <a href={`/identity/${u.username}`} className="text-xs text-primary hover:underline">Edit</a>
+                      </div>
+                    ))}
+                    {incompleteProfiles.length > 20 && <p className="text-xs text-muted-foreground">... and {incompleteProfiles.length - 20} more</p>}
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">Recommendation: Update profiles with real email addresses. Re-sync from xWiki to pull latest data.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
