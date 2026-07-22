@@ -51,9 +51,8 @@ class AuditController(
                         targetType = event.targetType,
                         targetId = event.targetId,
                         action = event.action,
-                        details = event.details,
                         correlationId = event.correlationId,
-                        createdAt = event.createdAt.toString(),
+                        createdAt = event.createdAt,
                     )
                 },
                 page = result.number,
