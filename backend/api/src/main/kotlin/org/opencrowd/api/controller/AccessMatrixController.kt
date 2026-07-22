@@ -88,20 +88,20 @@ class AccessMatrixController(
                 .filter { it.permission == permission && it.application == application && it.resourceName == resourceName }
             entries.forEach { accessEntryRepository.delete(it) }
 
+            eventPublisher.publish(org.opencrowd.core.event.PermissionPushed(
+                tenantId = org.opencrowd.core.multitenancy.TenantContext.getTenantId() ?: "acme",
+                actorId = null, correlationId = java.util.UUID.randomUUID().toString(),
+                principalName = principalName, principalType = principalType,
+                permission = permission, resourceName = resourceName,
+                application = application, action = "revoked",
+            ))
+
             return ResponseEntity.ok(mapOf(
                 "success" to true,
                 "action" to "revoked",
                 "message" to "Permission '$permission' revoked from '$principalName'",
                 "writeBack" to writeBackResult,
-            )).also {
-                eventPublisher.publish(org.opencrowd.core.event.PermissionPushed(
-                    tenantId = org.opencrowd.core.multitenancy.TenantContext.getTenantId() ?: "acme",
-                    actorId = null, correlationId = java.util.UUID.randomUUID().toString(),
-                    principalName = principalName, principalType = principalType,
-                    permission = permission, resourceName = resourceName,
-                    application = application, action = "revoked",
-                ))
-            }
+            ))
         } else {
             // Add to DB
             val entry = AccessEntry(
@@ -117,20 +117,20 @@ class AccessMatrixController(
             )
             accessEntryRepository.save(entry)
 
+            eventPublisher.publish(org.opencrowd.core.event.PermissionPushed(
+                tenantId = org.opencrowd.core.multitenancy.TenantContext.getTenantId() ?: "acme",
+                actorId = null, correlationId = java.util.UUID.randomUUID().toString(),
+                principalName = principalName, principalType = principalType,
+                permission = permission, resourceName = resourceName,
+                application = application, action = "granted",
+            ))
+
             return ResponseEntity.ok(mapOf(
                 "success" to true,
                 "action" to "granted",
                 "message" to "Permission '$permission' granted to '$principalName'",
                 "writeBack" to writeBackResult,
-            )).also {
-                eventPublisher.publish(org.opencrowd.core.event.PermissionPushed(
-                    tenantId = org.opencrowd.core.multitenancy.TenantContext.getTenantId() ?: "acme",
-                    actorId = null, correlationId = java.util.UUID.randomUUID().toString(),
-                    principalName = principalName, principalType = principalType,
-                    permission = permission, resourceName = resourceName,
-                    application = application, action = "granted",
-                ))
-            }
+            ))
         }
     }
 
