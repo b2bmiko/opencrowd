@@ -205,7 +205,98 @@ Schema-per-tenant gives strong isolation, easy per-tenant backup/export (for GDP
 3. **RBAC filter**: Method-level `@PreAuthorize` annotations check roles/permissions
 4. **Data-level**: Repository queries are automatically scoped to tenant via schema isolation
 
-### 3.4 API Design Conventions
+### 3.4 LDAP / Active Directory Integration
+
+OpenCrowd supports enterprise directory services (Active Directory, OpenLDAP, FreeIPA) through **Keycloak's built-in LDAP federation** — no custom LDAP connector needed.
+
+```
+┌─────────────────┐         ┌──────────────┐         ┌──────────────┐
+│  Active Directory│◄───────►│   Keycloak   │◄───────►│  OpenCrowd   │
+│  / LDAP Server   │  LDAP   │  (federation)│  OIDC   │  (governance)│
+└─────────────────┘         └──────────────┘         └──────────────┘
+                                    │
+                            ┌───────┴────────┐
+                            │                │
+                       ┌────▼─────┐   ┌──────▼──────┐
+                       │  xWiki   │   │ OpenProject  │
+                       │  (OIDC)  │   │   (OIDC)    │
+                       └──────────┘   └─────────────┘
+```
+
+**How it works:**
+
+1. **Keycloak LDAP Federation** (one-time admin setup):
+   - Keycloak connects to the organization's AD/LDAP directory
+   - Users are synced automatically (full sync + periodic delta sync)
+   - AD groups map to Keycloak groups/roles
+   - User attributes (department, title, manager) flow through to JWT claims
+
+2. **OpenCrowd sees LDAP users as regular Keycloak users:**
+   - No awareness of LDAP at the OpenCrowd level
+   - Users have the same JWT claims regardless of origin (local, LDAP, social)
+   - AD group memberships available via Keycloak role mappings
+   - Import from Keycloak (Task 19) pulls LDAP-federated users into OpenCrowd
+
+3. **For the end user:**
+   - Login with their Windows/AD credentials (same password as everything else)
+   - SSO across all connected apps (one login, all day)
+   - No separate OpenCrowd password to manage
+
+**Enterprise deployment with AD:**
+
+| Step | What | Who |
+|------|------|-----|
+| 1 | Install Keycloak, create realm | Platform admin |
+| 2 | Add LDAP federation (AD connection string, bind DN, search base) | Platform admin |
+| 3 | Map AD groups → Keycloak roles (e.g., `CN=IT-Admins` → `manage_users`) | Platform admin |
+| 4 | Configure OpenCrowd, xWiki, OpenProject as OIDC clients | Platform admin |
+| 5 | Users log in with AD credentials → SSO everywhere | End users |
+
+**Supported directories:**
+- Microsoft Active Directory (AD DS)
+- Azure Active Directory (via Keycloak's Azure AD identity provider)
+- OpenLDAP
+- FreeIPA / Red Hat IdM
+- Any LDAPv3-compliant directory
+
+### 3.5 Single Sign-On (SSO) Architecture
+
+OpenCrowd enables SSO across all connected applications through Keycloak as the central Identity Provider.
+
+**SSO Flow:**
+
+```
+User opens OpenCrowd → Redirected to Keycloak → Logs in once
+     ↓
+User opens xWiki → Redirected to Keycloak → Already authenticated → Instant access
+     ↓
+User opens OpenProject → Same → Instant access
+     ↓
+All apps share the same Keycloak session (configurable: 8-12 hours)
+```
+
+**What each app needs:**
+- Register as an OIDC client in the same Keycloak realm
+- Configure redirect URIs
+- Map Keycloak roles to app-specific permissions
+
+**OpenCrowd's role in SSO:**
+- OpenCrowd does NOT provide the SSO session (Keycloak does)
+- OpenCrowd GOVERNS what the authenticated user can access in each app
+- Think: Keycloak = "are you who you say you are?" / OpenCrowd = "what are you allowed to do?"
+
+**Supported SSO protocols:**
+- OpenID Connect (OIDC) — primary, used by OpenCrowd
+- SAML 2.0 — supported via Keycloak for legacy apps
+- OAuth 2.0 — for API-to-API authentication
+
+**Session management:**
+- Token lifetime: configurable (default 5 min access token, 30 min refresh)
+- SSO session: configurable (default 10 hours)
+- Silent refresh: OpenCrowd refreshes tokens automatically before expiry
+- Logout: terminates Keycloak session → logs out of all apps simultaneously
+
+### 3.6 API Design Conventions
 
 - Base path: `/api/v1`
 - Resource naming: plural nouns (`/api/v1/users`, `/api/v1/groups`)
@@ -228,7 +319,7 @@ Schema-per-tenant gives strong isolation, easy per-tenant backup/export (for GDP
 }
 ```
 
-### 3.5 Event System (Internal)
+### 3.7 Event System (Internal)
 
 Domain events for audit trail and future async processing:
 
