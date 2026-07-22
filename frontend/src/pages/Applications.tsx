@@ -63,7 +63,13 @@ export function ApplicationsPage() {
 function ConnectorCard({ connector, onRefresh }: { connector: Connector; onRefresh: () => void }) {
   const [checking, setChecking] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<{ success: boolean; users?: { total: number; created: number; updated: number; errors: number }; groups?: { total: number; created: number; skipped: number }; memberships?: { linked: number }; error?: string } | null>(null);
+  const [syncResult, setSyncResult] = useState<{
+    success: boolean;
+    users?: { total: number; created: number; updated: number; errors: number; createdNames?: string[]; updatedNames?: string[]; failed?: string[] };
+    groups?: { total: number; created: number; skipped: number; createdNames?: string[] };
+    memberships?: { linked: number; details?: string[] };
+    error?: string;
+  } | null>(null);
   const [showSyncDialog, setShowSyncDialog] = useState(false);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -176,11 +182,27 @@ function ConnectorCard({ connector, onRefresh }: { connector: Connector; onRefre
         {syncResult && (
           <div className={`mt-3 rounded-md p-3 text-xs ${syncResult.success ? 'bg-emerald-50 text-emerald-700' : 'bg-destructive/10 text-destructive'}`}>
             {syncResult.success ? (
-              <div className="space-y-0.5">
+              <div className="space-y-1">
                 <p className="font-medium">Sync complete</p>
                 {syncResult.users && <p>Users: {syncResult.users.total} found, {syncResult.users.created} created, {syncResult.users.updated} updated{syncResult.users.errors > 0 ? `, ${syncResult.users.errors} errors` : ''}</p>}
+                {syncResult.users?.createdNames?.length > 0 && (
+                  <p className="text-emerald-600">+ New: {syncResult.users.createdNames.join(', ')}</p>
+                )}
+                {syncResult.users?.updatedNames?.length > 0 && (
+                  <p className="text-blue-600">~ Updated: {syncResult.users.updatedNames.join(', ')}</p>
+                )}
                 {syncResult.groups && <p>Groups: {syncResult.groups.total} found, {syncResult.groups.created} created</p>}
-                {syncResult.memberships && syncResult.memberships.linked > 0 && <p>Memberships: {syncResult.memberships.linked} linked</p>}
+                {syncResult.groups?.createdNames?.length > 0 && (
+                  <p className="text-emerald-600">+ New groups: {syncResult.groups.createdNames.join(', ')}</p>
+                )}
+                {syncResult.memberships && syncResult.memberships.linked > 0 && (
+                  <>
+                    <p>Memberships: {syncResult.memberships.linked} linked</p>
+                    {syncResult.memberships.details?.length > 0 && (
+                      <p className="text-blue-600">→ {syncResult.memberships.details.slice(0, 5).join(', ')}{syncResult.memberships.details.length > 5 ? ` +${syncResult.memberships.details.length - 5} more` : ''}</p>
+                    )}
+                  </>
+                )}
               </div>
             ) : (
               <p>{syncResult.error}</p>

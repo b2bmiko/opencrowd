@@ -480,6 +480,8 @@ class ConnectorSyncController(
         var usersUpdated = 0
         var usersErrors = 0
         val failedUsers = mutableListOf<String>()
+        val createdUsernames = mutableListOf<String>()
+        val updatedUsernames = mutableListOf<String>()
 
         xwikiUsers.forEach { xwikiUser ->
             try {
@@ -528,6 +530,7 @@ class ConnectorSyncController(
                     )
                     userService.create(user)
                     usersCreated++
+                    createdUsernames.add(xwikiUser.username)
                 }
             } catch (e: Exception) {
                 logger.warn("[Resync] User import error for ${xwikiUser.username}: ${e.message}")
@@ -540,6 +543,7 @@ class ConnectorSyncController(
         val xwikiGroups = xwikiClient.getGroups()
         var groupsCreated = 0
         var groupsSkipped = 0
+        val createdGroupnames = mutableListOf<String>()
 
         xwikiGroups.forEach { xwikiGroup ->
             try {
@@ -548,6 +552,7 @@ class ConnectorSyncController(
                 val group = Group(name = xwikiGroup.name, description = "Imported from xWiki", type = GroupType.STATIC)
                 groupService.create(group)
                 groupsCreated++
+                createdGroupnames.add(xwikiGroup.name)
             } catch (e: Exception) {
                 logger.warn("[Resync] Group import error: ${e.message}")
             }
@@ -555,6 +560,7 @@ class ConnectorSyncController(
 
         // === Phase 3: Sync memberships ===
         var membersLinked = 0
+        val membershipDetails = mutableListOf<String>()
 
         xwikiGroups.forEach { xwikiGroup ->
             try {
@@ -565,7 +571,11 @@ class ConnectorSyncController(
                 memberUsernames.forEach { memberUsername ->
                     val user = userService.findByUsername(memberUsername)
                     if (user != null && user.id!! !in existingMembers) {
-                        try { groupService.addMember(group.id!!, user.id!!); membersLinked++ } catch (_: Exception) {}
+                        try {
+                            groupService.addMember(group.id!!, user.id!!)
+                            membersLinked++
+                            membershipDetails.add("${memberUsername} → ${xwikiGroup.name}")
+                        } catch (_: Exception) {}
                     }
                 }
             } catch (e: Exception) {
@@ -593,9 +603,9 @@ class ConnectorSyncController(
 
         return ResponseEntity.ok(mapOf(
             "success" to true,
-            "users" to mapOf("total" to xwikiUsers.size, "created" to usersCreated, "updated" to usersUpdated, "errors" to usersErrors, "failed" to failedUsers),
-            "groups" to mapOf("total" to xwikiGroups.size, "created" to groupsCreated, "skipped" to groupsSkipped),
-            "memberships" to mapOf("linked" to membersLinked),
+            "users" to mapOf("total" to xwikiUsers.size, "created" to usersCreated, "updated" to usersUpdated, "errors" to usersErrors, "failed" to failedUsers, "createdNames" to createdUsernames, "updatedNames" to updatedUsernames),
+            "groups" to mapOf("total" to xwikiGroups.size, "created" to groupsCreated, "skipped" to groupsSkipped, "createdNames" to createdGroupnames),
+            "memberships" to mapOf("linked" to membersLinked, "details" to membershipDetails),
         ))
     }
 
