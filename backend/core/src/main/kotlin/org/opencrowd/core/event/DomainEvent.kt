@@ -119,3 +119,44 @@ data class ConnectorHealthChanged(
     val previousHealth: String?,
     val newHealth: String,
 ) : DomainEvent
+
+
+// Sync events (detailed)
+
+data class SyncCompleted(
+    override val tenantId: String,
+    override val actorId: UUID?,
+    override val timestamp: Instant = Instant.now(),
+    override val correlationId: String,
+    val connectorId: UUID,
+    val connectorName: String,
+    val usersCreated: Int,
+    val usersUpdated: Int,
+    val usersErrors: Int,
+    val groupsCreated: Int,
+    val membersLinked: Int,
+) : DomainEvent
+
+data class PermissionPushed(
+    override val tenantId: String,
+    override val actorId: UUID?,
+    override val timestamp: Instant = Instant.now(),
+    override val correlationId: String,
+    val principalName: String,
+    val principalType: String,
+    val permission: String,
+    val resourceName: String,
+    val application: String,
+    val action: String, // "granted" or "revoked"
+) : DomainEvent
+
+data class GroupMembershipPushed(
+    override val tenantId: String,
+    override val actorId: UUID?,
+    override val timestamp: Instant = Instant.now(),
+    override val correlationId: String,
+    val groupName: String,
+    val username: String,
+    val application: String,
+    val action: String, // "added" or "removed"
+) : DomainEvent

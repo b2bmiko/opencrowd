@@ -40,6 +40,7 @@ class GroupController(
     private val groupRepository: org.opencrowd.core.repository.GroupRepository,
     private val userService: UserService,
     private val connectorService: ConnectorService,
+    private val eventPublisher: org.opencrowd.core.event.DomainEventPublisher,
 ) {
 
     private val logger = LoggerFactory.getLogger(GroupController::class.java)
@@ -192,6 +193,18 @@ class GroupController(
 
             if (success) {
                 logger.info("xWiki write-back: $action member $username in group $groupName")
+                // Publish audit event
+                eventPublisher.publish(
+                    org.opencrowd.core.event.GroupMembershipPushed(
+                        tenantId = org.opencrowd.core.multitenancy.TenantContext.getTenantId() ?: "acme",
+                        actorId = null,
+                        correlationId = java.util.UUID.randomUUID().toString(),
+                        groupName = groupName,
+                        username = username,
+                        application = "xwiki",
+                        action = if (action == "add") "added" else "removed",
+                    )
+                )
             } else {
                 logger.warn("xWiki write-back failed: $action member $username in group $groupName")
             }

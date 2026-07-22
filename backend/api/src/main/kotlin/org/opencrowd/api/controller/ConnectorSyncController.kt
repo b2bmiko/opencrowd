@@ -35,6 +35,7 @@ class ConnectorSyncController(
     private val connectorRegistry: ConnectorRegistry,
     private val userService: UserService,
     private val groupService: GroupService,
+    private val eventPublisher: org.opencrowd.core.event.DomainEventPublisher,
 ) {
 
     private val logger = LoggerFactory.getLogger(ConnectorSyncController::class.java)
@@ -573,6 +574,22 @@ class ConnectorSyncController(
         }
 
         logger.info("[Resync] Complete: users(created=$usersCreated, updated=$usersUpdated, errors=$usersErrors), groups(created=$groupsCreated), members(linked=$membersLinked)")
+
+        // Publish audit event
+        eventPublisher.publish(
+            org.opencrowd.core.event.SyncCompleted(
+                tenantId = org.opencrowd.core.multitenancy.TenantContext.getTenantId() ?: "acme",
+                actorId = null,
+                correlationId = java.util.UUID.randomUUID().toString(),
+                connectorId = dbConnector.id!!,
+                connectorName = dbConnector.name,
+                usersCreated = usersCreated,
+                usersUpdated = usersUpdated,
+                usersErrors = usersErrors,
+                groupsCreated = groupsCreated,
+                membersLinked = membersLinked,
+            )
+        )
 
         return ResponseEntity.ok(mapOf(
             "success" to true,
