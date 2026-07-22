@@ -226,6 +226,43 @@ class XWikiClient(
             // Global rights use XWikiGlobalRights class, space-level use XWikiRights
             val className = if (spaceName == "(global)") "XWiki.XWikiGlobalRights" else "XWiki.XWikiRights"
 
+            // Dedup check: see if this exact right already exists
+            val checkPath = if (spaceName == "(global)") {
+                "/rest/wikis/$wiki/spaces/XWiki/pages/XWikiPreferences/objects/$className"
+            } else {
+                "/rest/wikis/$wiki/spaces/${encodeSpace(spaceName)}/pages/WebPreferences/objects/$className"
+            }
+
+            val existingResponse = get(checkPath)
+            if (existingResponse.statusCode() == 200) {
+                val body = existingResponse.body()
+                val numberRegex = "<number>(\\d+)</number>".toRegex()
+                val numbers = numberRegex.findAll(body).map { it.groupValues[1].toInt() }.toList()
+
+                for (num in numbers) {
+                    val detailResponse = get("$checkPath/$num")
+                    if (detailResponse.statusCode() == 200) {
+                        val detail = detailResponse.body()
+                        val usersValue = extractPropertyValue(detail, "users") ?: ""
+                        val groupsValue = extractPropertyValue(detail, "groups") ?: ""
+                        val levelsValue = extractPropertyValue(detail, "levels") ?: ""
+
+                        val matchesPrincipal = if (isGroup) {
+                            groupsValue.contains(principalName) || groupsValue.contains(principal)
+                        } else {
+                            usersValue.contains(principalName) || usersValue.contains(principal)
+                        }
+                        val matchesLevel = levelsStr == levelsValue || levels.all { it in levelsValue.split(",").map { l -> l.trim() } }
+
+                        if (matchesPrincipal && matchesLevel) {
+                            logger.debug("Right already exists: $principalName → $levelsStr on $spaceName (skipping)")
+                            return true // Already exists, no need to create
+                        }
+                    }
+                }
+            }
+
+            // Create new rights object
             val xmlBody = buildString {
                 append("""<object xmlns="http://www.xwiki.org">""")
                 append("<className>$className</className>")
