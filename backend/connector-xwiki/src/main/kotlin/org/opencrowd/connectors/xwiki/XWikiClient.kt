@@ -161,19 +161,22 @@ class XWikiClient(
      * Tries object index 0 first, falls back to listing objects to find the right one.
      */
     fun getUserDetails(username: String, wiki: String = "xwiki"): XWikiUser? {
+        // URL-encode username to handle dots and special chars (e.g., John.doe → John%2Edoe)
+        val encodedUsername = URLEncoder.encode(username, "UTF-8").replace("+", "%20")
+
         // Try the common case: object at index 0
-        val response = get("/rest/wikis/$wiki/spaces/XWiki/pages/$username/objects/XWiki.XWikiUsers/0")
+        val response = get("/rest/wikis/$wiki/spaces/XWiki/pages/$encodedUsername/objects/XWiki.XWikiUsers/0")
         if (response.statusCode() == 200) {
             return parseUserDetailResponse(response.body(), username)
         }
 
         // Fallback: list all XWikiUsers objects on this page and use the first one
-        val listResponse = get("/rest/wikis/$wiki/spaces/XWiki/pages/$username/objects/XWiki.XWikiUsers")
+        val listResponse = get("/rest/wikis/$wiki/spaces/XWiki/pages/$encodedUsername/objects/XWiki.XWikiUsers")
         if (listResponse.statusCode() == 200) {
             val numberRegex = "<number>(\\d+)</number>".toRegex()
             val numbers = numberRegex.findAll(listResponse.body()).map { it.groupValues[1].toInt() }.toList()
             if (numbers.isNotEmpty()) {
-                val detailResponse = get("/rest/wikis/$wiki/spaces/XWiki/pages/$username/objects/XWiki.XWikiUsers/${numbers.first()}")
+                val detailResponse = get("/rest/wikis/$wiki/spaces/XWiki/pages/$encodedUsername/objects/XWiki.XWikiUsers/${numbers.first()}")
                 if (detailResponse.statusCode() == 200) {
                     return parseUserDetailResponse(detailResponse.body(), username)
                 }
