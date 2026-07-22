@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { ClipboardList, Search, Download } from 'lucide-react';
+import { ClipboardList, Search, Download, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { apiClient } from '@/lib/api-client';
 
 interface AuditEvent {
@@ -12,6 +11,7 @@ interface AuditEvent {
   targetType: string | null;
   targetId: string | null;
   action: string;
+  details: string | null;
   correlationId: string | null;
   createdAt: string;
 }
@@ -24,6 +24,7 @@ export function AuditPage() {
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     loadEvents();
@@ -53,20 +54,21 @@ export function AuditPage() {
       event.eventType.toLowerCase().includes(q) ||
       event.action.toLowerCase().includes(q) ||
       event.actorEmail?.toLowerCase().includes(q) ||
-      event.targetType?.toLowerCase().includes(q)
+      event.targetType?.toLowerCase().includes(q) ||
+      event.details?.toLowerCase().includes(q)
     );
   });
 
   const exportCSV = () => {
     const csv = [
-      ['Timestamp', 'Event', 'Action', 'Target Type', 'Actor', 'Correlation ID'].join(','),
+      ['Timestamp', 'Event', 'Action', 'Target Type', 'Details', 'Correlation ID'].join(','),
       ...filteredEvents.map((e) =>
         [
           e.createdAt,
           e.eventType,
           e.action,
           e.targetType || '',
-          e.actorEmail || '',
+          `"${(e.details || '').replace(/"/g, '""')}"`,
           e.correlationId || '',
         ].join(',')
       ),
@@ -88,10 +90,45 @@ export function AuditPage() {
     status_changed: 'bg-amber-100 text-amber-800',
     assigned: 'bg-purple-100 text-purple-800',
     revoked: 'bg-red-100 text-red-800',
+    granted: 'bg-emerald-100 text-emerald-800',
     member_added: 'bg-emerald-100 text-emerald-800',
     member_removed: 'bg-red-100 text-red-800',
+    added: 'bg-emerald-100 text-emerald-800',
+    removed: 'bg-red-100 text-red-800',
     sync_completed: 'bg-blue-100 text-blue-800',
     health_changed: 'bg-amber-100 text-amber-800',
+  };
+
+  /** Generate a human-readable description from the event details */
+  const describeEvent = (event: AuditEvent): string => {
+    try {
+      if (!event.details || event.details === '{}') return '';
+      const d = JSON.parse(event.details);
+
+      switch (event.eventType) {
+        case 'PermissionPushed':
+          return `${d.principal} → ${d.permission} on ${d.resource} (${d.app})`;
+        case 'GroupMembershipPushed':
+          return `${d.user} ${d.action} ${d.action === 'added' ? 'to' : 'from'} ${d.group} (${d.app})`;
+        case 'SyncCompleted':
+          return `${d.connector}: ${d.usersCreated} users created, ${d.usersUpdated} updated, ${d.groupsCreated} groups, ${d.membersLinked} memberships`;
+        case 'UserCreated':
+          return `${d.username} (${d.email})`;
+        case 'UserStatusChanged':
+          return `${d.previousStatus} → ${d.newStatus}`;
+        case 'GroupCreated':
+          return d.name;
+        case 'GroupMemberAdded':
+        case 'GroupMemberRemoved':
+          return `User ${d.userId?.substring(0, 8)}... in group ${d.groupId?.substring(0, 8)}...`;
+        case 'ConnectorHealthChanged':
+          return `${d.previousHealth || 'unknown'} → ${d.newHealth}`;
+        default:
+          return '';
+      }
+    } catch {
+      return '';
+    }
   };
 
   return (
@@ -128,8 +165,10 @@ export function AuditPage() {
           className="h-9 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         >
           <option value="">All events</option>
+          <option value="PermissionPushed">Permission Changes</option>
+          <option value="GroupMembershipPushed">Group Membership</option>
+          <option value="SyncCompleted">Sync Completed</option>
           <option value="UserCreated">User Created</option>
-          <option value="UserUpdated">User Updated</option>
           <option value="UserStatusChanged">Status Changed</option>
           <option value="GroupCreated">Group Created</option>
           <option value="GroupMemberAdded">Member Added</option>
@@ -150,42 +189,67 @@ export function AuditPage() {
             <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
           </div>
         ) : filteredEvents.length > 0 ? (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b bg-muted/50 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                <th className="px-4 py-3">Timestamp</th>
-                <th className="px-4 py-3">Event</th>
-                <th className="px-4 py-3">Action</th>
-                <th className="px-4 py-3">Target</th>
-                <th className="px-4 py-3">Correlation ID</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {filteredEvents.map((event) => (
-                <tr key={event.id} className="hover:bg-muted/30">
-                  <td className="px-4 py-2 text-sm text-muted-foreground whitespace-nowrap">
-                    {new Date(event.createdAt).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-2">
-                    <span className="text-sm font-medium text-foreground">{event.eventType}</span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${actionColors[event.action] || 'bg-gray-100 text-gray-800'}`}>
+          <div className="divide-y">
+            {filteredEvents.map((event) => {
+              const isExpanded = expandedId === event.id;
+              const description = describeEvent(event);
+              let detailsObj: Record<string, unknown> | null = null;
+              try { if (event.details && event.details !== '{}') detailsObj = JSON.parse(event.details); } catch {}
+
+              return (
+                <div key={event.id}>
+                  <div
+                    className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors"
+                    onClick={() => setExpandedId(isExpanded ? null : event.id)}
+                  >
+                    {detailsObj ? (
+                      isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                    ) : (
+                      <div className="w-4 shrink-0" />
+                    )}
+
+                    <span className="text-xs text-muted-foreground whitespace-nowrap w-36">
+                      {new Date(event.createdAt).toLocaleString()}
+                    </span>
+
+                    <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${actionColors[event.action] || 'bg-gray-100 text-gray-800'}`}>
                       {event.action}
                     </span>
-                  </td>
-                  <td className="px-4 py-2 text-sm text-muted-foreground">
-                    {event.targetType && (
-                      <span>{event.targetType}</span>
+
+                    <span className="text-sm font-medium text-foreground shrink-0">
+                      {event.eventType.replace(/([A-Z])/g, ' $1').trim()}
+                    </span>
+
+                    {description && (
+                      <span className="text-sm text-muted-foreground truncate">
+                        — {description}
+                      </span>
                     )}
-                  </td>
-                  <td className="px-4 py-2 text-xs font-mono text-muted-foreground">
-                    {event.correlationId?.substring(0, 8)}...
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+
+                  {/* Expanded details */}
+                  {isExpanded && detailsObj && (
+                    <div className="px-12 pb-3">
+                      <div className="rounded-md bg-muted/50 p-3 text-xs font-mono space-y-1">
+                        {Object.entries(detailsObj).map(([key, value]) => (
+                          <div key={key} className="flex gap-2">
+                            <span className="text-muted-foreground font-semibold min-w-[100px]">{key}:</span>
+                            <span className="text-foreground">{String(value)}</span>
+                          </div>
+                        ))}
+                        {event.correlationId && (
+                          <div className="flex gap-2 pt-1 border-t border-muted">
+                            <span className="text-muted-foreground font-semibold min-w-[100px]">correlationId:</span>
+                            <span className="text-foreground">{event.correlationId}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <div className="flex h-40 flex-col items-center justify-center text-muted-foreground">
             <ClipboardList className="mb-2 h-8 w-8" />
@@ -207,6 +271,11 @@ export function AuditPage() {
           </div>
         </div>
       )}
+
+      {/* Retention Info */}
+      <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
+        <p>Audit events are retained based on your configured retention policy (default: 365 days). Go to Settings → General to adjust. Export as CSV before cleanup to keep records.</p>
+      </div>
     </div>
   );
 }

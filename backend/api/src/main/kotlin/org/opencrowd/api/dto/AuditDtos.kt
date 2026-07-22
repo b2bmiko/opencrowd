@@ -11,6 +11,7 @@ data class AuditEventResponse(
     val targetType: String?,
     val targetId: UUID?,
     val action: String,
+    val details: String?,
     val correlationId: String?,
     val createdAt: Instant,
 )
