@@ -135,9 +135,14 @@ class AccessMatrixController(
     }
 
     private fun writeBackToApp(application: String, principalName: String, principalType: String, permission: String, resourceName: String, action: String): String {
-        if (application != "xwiki") return "write-back not implemented for $application"
+        return when (application) {
+            "xwiki" -> writeBackToXWiki(principalName, principalType, permission, resourceName, action)
+            "openproject" -> writeBackToOpenProject(principalName, principalType, permission, resourceName, action)
+            else -> "write-back not implemented for $application"
+        }
+    }
 
-        // Get stored xWiki credentials from connector
+    private fun writeBackToXWiki(principalName: String, principalType: String, permission: String, resourceName: String, action: String): String {
         val connectors = connectorService.findAll().filter { it.connectorType == "xwiki" && it.config != "{}" }
         if (connectors.isEmpty()) return "no xwiki connector with credentials found"
 
@@ -161,6 +166,58 @@ class AccessMatrixController(
                 val isGroup = principalType == "GROUP"
                 val success = client.removeRight(spaceName, principalName, isGroup, listOf(permission))
                 if (success) "revoked from xWiki" else "xWiki revoke failed"
+            }
+        } catch (e: Exception) {
+            "write-back error: ${e.message}"
+        }
+    }
+
+    private fun writeBackToOpenProject(principalName: String, principalType: String, permission: String, resourceName: String, action: String): String {
+        val connectors = connectorService.findAll().filter { it.connectorType == "openproject" && it.config != "{}" }
+        if (connectors.isEmpty()) return "no openproject connector with credentials found"
+
+        val connector = connectors.first()
+        return try {
+            val configMap = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
+                .readValue<Map<String, String>>(connector.config)
+            val baseUrl = configMap["baseUrl"] ?: return "missing baseUrl"
+            val apiKey = configMap["password"] ?: configMap["apiKey"] ?: return "missing apiKey"
+
+            val client = org.opencrowd.connectors.openproject.OpenProjectClient(baseUrl.trimEnd('/'), apiKey)
+
+            if (action == "grant") {
+                // Find the user ID and role ID in OpenProject
+                val users = client.getUsers()
+                val opUser = users.find { it.login == principalName || it.firstName + " " + it.lastName == principalName }
+                    ?: return "user '$principalName' not found in OpenProject"
+
+                val roles = client.getRoles()
+                val role = roles.find { it.name.equals(permission, ignoreCase = true) }
+                    ?: return "role '$permission' not found in OpenProject"
+
+                // Find the project
+                val projects = client.getProjects()
+                val project = if (resourceName == "(global)") {
+                    projects.firstOrNull()
+                } else {
+                    projects.find { it.name == resourceName || it.identifier == resourceName }
+                } ?: return "project '$resourceName' not found in OpenProject"
+
+                val success = client.addMembership(project.id, opUser.id, role.id)
+                if (success) "written to OpenProject" else "OpenProject write failed"
+            } else {
+                // Revoke: find and remove the membership
+                val memberships = client.getMemberships()
+                val match = memberships.find {
+                    it.principalName == principalName && it.roles.any { r -> r.equals(permission, ignoreCase = true) }
+                            && (resourceName == "(global)" || it.projectName == resourceName)
+                }
+                if (match != null) {
+                    val success = client.removeMembership(match.id)
+                    if (success) "revoked from OpenProject" else "OpenProject revoke failed"
+                } else {
+                    "membership not found in OpenProject"
+                }
             }
         } catch (e: Exception) {
             "write-back error: ${e.message}"
