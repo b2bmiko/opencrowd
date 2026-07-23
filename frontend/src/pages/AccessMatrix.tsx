@@ -123,15 +123,16 @@ export function AccessMatrixPage() {
     }
   };
 
-  // Get unique permissions (columns)
-  const allPermissions = [...new Set(entries.map((e) => e.permission))].filter(p => p !== '(none)').sort();
+  // Get unique permissions (columns) — filtered by selected app so only relevant permissions show
+  const permissionSource = selectedApp ? entries.filter(e => e.application === selectedApp) : entries;
+  const allPermissions = [...new Set(permissionSource.map((e) => e.permission))].filter(p => p !== '(none)').sort();
 
   const togglePermission = async (principalName: string, permission: string, currentlyGranted: boolean, entry?: AccessEntry) => {
     try {
       const principalType = entry?.principalType || (activeTab === 'groups' ? 'GROUP' : 'USER');
-      const application = entry?.application || 'xwiki';
-      const resourceName = entry?.resourceName || '(global)';
-      const resourceType = entry?.resourceType || 'wiki';
+      const application = entry?.application || selectedApp || 'xwiki';
+      const resourceName = entry?.resourceName || (application === 'openproject' ? '(global)' : '(global)');
+      const resourceType = entry?.resourceType || (application === 'openproject' ? 'project' : 'wiki');
 
       const response = await apiClient.post<{ success: boolean; message: string }>('/access-matrix/toggle', {
         principalName,
