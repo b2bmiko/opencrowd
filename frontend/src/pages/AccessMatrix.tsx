@@ -220,12 +220,9 @@ export function AccessMatrixPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={syncRights} disabled={isSyncing}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-            {isSyncing ? 'Syncing...' : 'Sync Permissions'}
-          </Button>
-          <Button variant="outline" onClick={pushToApps} disabled={isSyncing}>
-            Push to xWiki
+          <Button variant="outline" onClick={() => { loadEntries(); loadGroups(); loadUsers(); }}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
           </Button>
         </div>
       </div>
