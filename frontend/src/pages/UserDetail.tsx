@@ -54,8 +54,20 @@ export function UserDetailPage({ userId, onBack }: UserDetailPageProps) {
 
   const loadGroups = async () => {
     try {
-      const response = await apiClient.get<{ content: Group[] }>('/groups', { params: { size: 100 } });
-      setGroups(response.data.content || []);
+      const response = await apiClient.get<{ content: Group[] }>('/groups', { params: { size: 200 } });
+      const allGroups = response.data.content || [];
+
+      // Check which groups this user belongs to
+      const userGroups: Group[] = [];
+      for (const group of allGroups) {
+        try {
+          const membersRes = await apiClient.get<{ memberIds: string[] }>(`/groups/${group.id}/members`);
+          if (membersRes.data.memberIds?.includes(userId)) {
+            userGroups.push(group);
+          }
+        } catch {}
+      }
+      setGroups(userGroups);
     } catch (e) {
       // Groups loading is non-critical
     }
