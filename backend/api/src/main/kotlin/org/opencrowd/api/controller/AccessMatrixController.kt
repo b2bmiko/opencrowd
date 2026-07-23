@@ -188,23 +188,33 @@ class AccessMatrixController(
             if (action == "grant") {
                 // Find the user ID and role ID in OpenProject
                 val users = client.getUsers()
-                val opUser = users.find { it.login == principalName || it.firstName + " " + it.lastName == principalName }
-                    ?: return "user '$principalName' not found in OpenProject"
+                val opUser = users.find { 
+                    it.login == principalName || 
+                    "${it.firstName} ${it.lastName}".trim() == principalName ||
+                    it.firstName == principalName
+                } ?: return "user '$principalName' not found in OpenProject"
 
                 val roles = client.getRoles()
                 val role = roles.find { it.name.equals(permission, ignoreCase = true) }
                     ?: return "role '$permission' not found in OpenProject"
 
-                // Find the project
+                // Find the project — use resourceName or first project the user is already in
                 val projects = client.getProjects()
                 val project = if (resourceName == "(global)") {
-                    projects.firstOrNull()
+                    // Try to find a project the user already has access to
+                    val existingMemberships = client.getMemberships()
+                    val userMembership = existingMemberships.find { it.principalId == opUser.id }
+                    if (userMembership != null) {
+                        projects.find { it.name == userMembership.projectName }
+                    } else {
+                        projects.firstOrNull()
+                    }
                 } else {
                     projects.find { it.name == resourceName || it.identifier == resourceName }
-                } ?: return "project '$resourceName' not found in OpenProject"
+                } ?: return "no suitable project found in OpenProject"
 
                 val success = client.addMembership(project.id, opUser.id, role.id)
-                if (success) "written to OpenProject" else "OpenProject write failed"
+                if (success) "written to OpenProject (project: ${project.name})" else "OpenProject write failed"
             } else {
                 // Revoke: find and remove the membership
                 val memberships = client.getMemberships()
