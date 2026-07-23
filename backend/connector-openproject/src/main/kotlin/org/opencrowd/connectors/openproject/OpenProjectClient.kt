@@ -211,7 +211,7 @@ class OpenProjectClient(
         val memberships = mutableListOf<OpenProjectMembership>()
         var offset = 1
         val pageSize = 100
-        val filter = if (projectId != null) "&filters=[{\"project\":{\"operator\":\"=\",\"values\":[\"$projectId\"]}}]" else ""
+        val filter = if (projectId != null) "&filters=" + java.net.URLEncoder.encode("[{\"project\":{\"operator\":\"=\",\"values\":[\"$projectId\"]}}]", "UTF-8") else ""
 
         while (true) {
             val response = get("/api/v3/memberships?offset=$offset&pageSize=$pageSize$filter")
