@@ -130,8 +130,15 @@ export function AccessMatrixPage() {
   const togglePermission = async (principalName: string, permission: string, currentlyGranted: boolean, entry?: AccessEntry) => {
     try {
       const principalType = entry?.principalType || (activeTab === 'groups' ? 'GROUP' : 'USER');
-      const application = entry?.application || selectedApp || 'xwiki';
-      const resourceName = entry?.resourceName || (application === 'openproject' ? '(global)' : '(global)');
+      // Determine application: from entry, from filter, or infer from resource
+      let application = entry?.application || selectedApp || '';
+      if (!application && selectedResource) {
+        // Infer app from entries that use this resource
+        const resourceEntry = entries.find(e => e.resourceName === selectedResource);
+        application = resourceEntry?.application || 'xwiki';
+      }
+      if (!application) application = 'xwiki';
+      const resourceName = entry?.resourceName || selectedResource || '(global)';
       const resourceType = entry?.resourceType || (application === 'openproject' ? 'project' : 'wiki');
 
       const response = await apiClient.post<{ success: boolean; message: string }>('/access-matrix/toggle', {
