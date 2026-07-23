@@ -331,11 +331,6 @@ class OpenProjectClient(
             false
         }
     }
-        } catch (e: Exception) {
-            logger.error("Failed to add membership: ${e.message}")
-            false
-        }
-    }
 
     /**
      * Remove a membership by ID.
