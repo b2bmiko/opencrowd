@@ -99,7 +99,7 @@ export function IdentityPage() {
               <tr className="border-b bg-muted/50 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 <th className="px-4 py-3">User</th>
                 <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Department</th>
+                <th className="px-4 py-3">Source</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Created</th>
               </tr>
@@ -192,7 +192,19 @@ function UserRow({ user }: { user: User }) {
         </div>
       </td>
       <td className="px-4 py-3 text-sm text-foreground">{user.email}</td>
-      <td className="px-4 py-3 text-sm text-muted-foreground">{user.department || '—'}</td>
+      <td className="px-4 py-3">
+        {user.externalId ? (
+          <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+            user.externalId.startsWith('xwiki') ? 'bg-blue-100 text-blue-800' :
+            user.externalId.startsWith('openproject') ? 'bg-emerald-100 text-emerald-800' :
+            'bg-gray-100 text-gray-800'
+          }`}>
+            {user.externalId.split(':')[0]}
+          </span>
+        ) : (
+          <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-800">local</span>
+        )}
+      </td>
       <td className="px-4 py-3">
         <Badge variant={statusVariant[user.status as keyof typeof statusVariant] || 'outline'}>
           {user.status}
