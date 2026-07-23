@@ -9,6 +9,7 @@ import org.opencrowd.connectors.sdk.ConnectorRegistry
 import org.opencrowd.connectors.sdk.ConnectorResult
 import org.opencrowd.connectors.sdk.SyncOptions
 import org.opencrowd.connectors.xwiki.XWikiClient
+import org.opencrowd.connectors.openproject.OpenProjectClient
 import org.opencrowd.core.entity.Group
 import org.opencrowd.core.entity.GroupType
 import org.opencrowd.core.entity.User
@@ -36,6 +37,7 @@ class ConnectorSyncController(
     private val userService: UserService,
     private val groupService: GroupService,
     private val eventPublisher: org.opencrowd.core.event.DomainEventPublisher,
+    private val accessEntryRepository: org.opencrowd.core.repository.AccessEntryRepository,
 ) {
 
     private val logger = LoggerFactory.getLogger(ConnectorSyncController::class.java)
@@ -299,18 +301,31 @@ class ConnectorSyncController(
         val dbConnector = connectorService.findById(id)
             ?: return ResponseEntity.notFound().build()
 
-        val xwikiClient = buildXWikiClient(body)
-            ?: return ResponseEntity.ok(mapOf("success" to false, "error" to "Connection failed"))
+        val baseUrl = body["baseUrl"] ?: throw IllegalArgumentException("Missing baseUrl")
+        val username = body["username"] ?: throw IllegalArgumentException("Missing username")
+        val password = body["password"] ?: throw IllegalArgumentException("Missing password")
 
         // Save credentials to connector so future syncs don't need manual input
-        val baseUrl = body["baseUrl"]!!
-        val username = body["username"]!!
-        val password = body["password"]!!
         connectorService.update(id) { connector ->
             connector.config = """{"baseUrl":"$baseUrl","username":"$username","password":"$password"}"""
             connector.status = org.opencrowd.core.entity.ConnectorStatus.CONNECTED
             connector
         }
+
+        // Route by connector type
+        if (dbConnector.connectorType == "openproject") {
+            val client = OpenProjectClient(baseUrl.trimEnd('/'), password) // API key is the password
+            if (!client.testConnection()) {
+                return ResponseEntity.ok(mapOf("success" to false, "error" to "Connection failed"))
+            }
+            // Reload connector with saved config and delegate to resync
+            val updatedConnector = connectorService.findById(id)!!
+            return resyncOpenProject(updatedConnector)
+        }
+
+        // Default: xWiki
+        val xwikiClient = buildXWikiClient(body)
+            ?: return ResponseEntity.ok(mapOf("success" to false, "error" to "Connection failed"))
 
         logger.info("[SyncAll] Starting full sync from xWiki...")
 
@@ -469,6 +484,14 @@ class ConnectorSyncController(
             return ResponseEntity.ok(mapOf("success" to false, "error" to "No credentials saved. Use Test Connection first."))
         }
 
+        return when (dbConnector.connectorType) {
+            "xwiki" -> resyncXWiki(dbConnector)
+            "openproject" -> resyncOpenProject(dbConnector)
+            else -> ResponseEntity.ok(mapOf("success" to false, "error" to "Sync not implemented for ${dbConnector.connectorType}"))
+        }
+    }
+
+    private fun resyncXWiki(dbConnector: org.opencrowd.core.entity.Connector): ResponseEntity<Map<String, Any>> {
         val xwikiClient = buildXWikiClientFromConfig(dbConnector.config)
             ?: return ResponseEntity.ok(mapOf("success" to false, "error" to "Connection failed — stored credentials may be invalid"))
 
@@ -609,6 +632,150 @@ class ConnectorSyncController(
         ))
     }
 
+    private fun resyncOpenProject(dbConnector: org.opencrowd.core.entity.Connector): ResponseEntity<Map<String, Any>> {
+        val client = buildOpenProjectClientFromConfig(dbConnector.config)
+            ?: return ResponseEntity.ok(mapOf("success" to false, "error" to "Connection failed — stored credentials may be invalid"))
+
+        logger.info("[Resync:OP] Starting full sync from stored credentials for: ${dbConnector.name}")
+
+        // === Phase 1: Import users ===
+        val opUsers = client.getUsers()
+        var usersCreated = 0
+        var usersUpdated = 0
+        var usersErrors = 0
+        val createdUsernames = mutableListOf<String>()
+
+        opUsers.forEach { opUser ->
+            try {
+                if (opUser.login.isBlank() || opUser.status == "locked") return@forEach
+
+                val existing = userService.findByUsername(opUser.login)
+                if (existing != null) {
+                    // Update if needed
+                    val newEmail = opUser.email?.takeIf { it.isNotBlank() }
+                    val newFirst = opUser.firstName?.takeIf { it.isNotBlank() }
+                    val newLast = opUser.lastName?.takeIf { it.isNotBlank() }
+                    val hasChanges = (newEmail != null && newEmail != existing.email) ||
+                        (newFirst != null && newFirst != existing.firstName) ||
+                        (newLast != null && newLast != existing.lastName)
+
+                    if (hasChanges) {
+                        userService.update(existing.id!!) { user ->
+                            if (newEmail != null) {
+                                val emailOwner = userService.findByEmail(newEmail)
+                                if (emailOwner == null || emailOwner.id == user.id) user.email = newEmail
+                            }
+                            if (newFirst != null) user.firstName = newFirst
+                            if (newLast != null) user.lastName = newLast
+                            user.displayName = listOfNotNull(user.firstName, user.lastName).joinToString(" ").ifEmpty { user.username }
+                            user
+                        }
+                        usersUpdated++
+                    }
+                } else {
+                    val email = opUser.email?.takeIf { it.isNotBlank() } ?: "${opUser.login}@imported.local"
+                    val safeEmail = if (userService.findByEmail(email) != null) "${opUser.login}@openproject.local" else email
+                    val displayName = listOfNotNull(opUser.firstName, opUser.lastName).joinToString(" ").ifEmpty { opUser.login }
+
+                    userService.create(org.opencrowd.core.entity.User(
+                        username = opUser.login,
+                        email = safeEmail,
+                        firstName = opUser.firstName,
+                        lastName = opUser.lastName,
+                        displayName = displayName,
+                        status = org.opencrowd.core.entity.UserStatus.ACTIVE,
+                        externalId = "openproject:${opUser.id}",
+                    ))
+                    usersCreated++
+                    createdUsernames.add(opUser.login)
+                }
+            } catch (e: Exception) {
+                logger.warn("[Resync:OP] User import error for ${opUser.login}: ${e.message}")
+                usersErrors++
+            }
+        }
+
+        // === Phase 2: Import groups ===
+        val opGroups = client.getGroups()
+        var groupsCreated = 0
+        val createdGroupnames = mutableListOf<String>()
+
+        opGroups.forEach { opGroup ->
+            try {
+                if (groupService.findByName(opGroup.name) == null) {
+                    groupService.create(org.opencrowd.core.entity.Group(
+                        name = opGroup.name,
+                        description = "Imported from OpenProject",
+                        type = org.opencrowd.core.entity.GroupType.STATIC,
+                    ))
+                    groupsCreated++
+                    createdGroupnames.add(opGroup.name)
+                }
+            } catch (e: Exception) {
+                logger.warn("[Resync:OP] Group import error: ${e.message}")
+            }
+        }
+
+        // === Phase 3: Import project memberships as permissions ===
+        val memberships = client.getMemberships()
+        var permissionsCreated = 0
+
+        memberships.forEach { membership ->
+            try {
+                membership.roles.forEach { role ->
+                    // Store as access entry (similar to xWiki rights)
+                    val existing = accessEntryRepository.findByPrincipalName(membership.principalName)
+                        .any { it.application == "openproject" && it.resourceName == membership.projectName && it.permission == role }
+
+                    if (!existing) {
+                        accessEntryRepository.save(org.opencrowd.core.entity.AccessEntry(
+                            principalType = if (membership.principalType == "GROUP") org.opencrowd.core.entity.PrincipalType.GROUP else org.opencrowd.core.entity.PrincipalType.USER,
+                            principalName = membership.principalName,
+                            application = "openproject",
+                            resourceType = "project",
+                            resourceName = membership.projectName,
+                            permission = role,
+                            allow = true,
+                            source = "synced",
+                            syncedAt = java.time.Instant.now(),
+                        ))
+                        permissionsCreated++
+                    }
+                }
+            } catch (e: Exception) {
+                logger.warn("[Resync:OP] Membership import error: ${e.message}")
+            }
+        }
+
+        // Update last sync
+        connectorService.update(dbConnector.id!!) { c -> c.lastSyncAt = java.time.Instant.now(); c }
+
+        logger.info("[Resync:OP] Complete: users(+$usersCreated, ~$usersUpdated), groups(+$groupsCreated), permissions(+$permissionsCreated)")
+
+        // Publish audit event
+        eventPublisher.publish(
+            org.opencrowd.core.event.SyncCompleted(
+                tenantId = org.opencrowd.core.multitenancy.TenantContext.getTenantId() ?: "acme",
+                actorId = null,
+                correlationId = java.util.UUID.randomUUID().toString(),
+                connectorId = dbConnector.id!!,
+                connectorName = dbConnector.name,
+                usersCreated = usersCreated,
+                usersUpdated = usersUpdated,
+                usersErrors = usersErrors,
+                groupsCreated = groupsCreated,
+                membersLinked = permissionsCreated,
+            )
+        )
+
+        return ResponseEntity.ok(mapOf(
+            "success" to true,
+            "users" to mapOf("total" to opUsers.size, "created" to usersCreated, "updated" to usersUpdated, "errors" to usersErrors, "createdNames" to createdUsernames),
+            "groups" to mapOf("total" to opGroups.size, "created" to groupsCreated, "createdNames" to createdGroupnames),
+            "memberships" to mapOf("linked" to permissionsCreated, "total" to memberships.size),
+        ))
+    }
+
     // --- Helpers ---
 
     private fun buildXWikiClient(body: Map<String, String>): XWikiClient? {
@@ -631,6 +798,20 @@ class ConnectorSyncController(
             if (client.testConnection()) client else null
         } catch (e: Exception) {
             logger.error("Failed to build xWiki client from stored config: ${e.message}")
+            null
+        }
+    }
+
+    private fun buildOpenProjectClientFromConfig(config: String): OpenProjectClient? {
+        return try {
+            val mapper = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
+            val configMap: Map<String, String> = mapper.readValue(config, object : com.fasterxml.jackson.core.type.TypeReference<Map<String, String>>() {})
+            val baseUrl = configMap["baseUrl"] ?: return null
+            val apiKey = configMap["password"] ?: configMap["apiKey"] ?: return null
+            val client = OpenProjectClient(baseUrl.trimEnd('/'), apiKey)
+            if (client.testConnection()) client else null
+        } catch (e: Exception) {
+            logger.error("Failed to build OpenProject client from stored config: ${e.message}")
             null
         }
     }
