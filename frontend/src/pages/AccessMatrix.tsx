@@ -43,6 +43,7 @@ export function AccessMatrixPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [selectedResource, setSelectedResource] = useState<string>('');
+  const [selectedApp, setSelectedApp] = useState<string>('');
 
   useEffect(() => {
     loadEntries();
@@ -151,14 +152,16 @@ export function AccessMatrixPage() {
     }
   };
 
-  // Get unique resources for filter
+  // Get unique resources and applications for filters
   const allResources = [...new Set(entries.map((e) => e.resourceName))].sort();
+  const allApps = [...new Set(entries.map((e) => e.application))].sort();
 
   // Filter entries based on tab and search
   const filteredEntries = entries.filter((entry) => {
     if (activeTab === 'groups' && entry.principalType !== 'GROUP') return false;
     if (activeTab === 'users' && entry.principalType !== 'USER') return false;
     if (activeTab === 'inspect') return true; // Inspect shows all, filtered by search
+    if (selectedApp && entry.application !== selectedApp) return false;
     if (selectedResource && entry.resourceName !== selectedResource) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -239,7 +242,7 @@ export function AccessMatrixPage() {
           {([
             { id: 'groups', label: 'Groups' },
             { id: 'users', label: 'Users' },
-            { id: 'spaces', label: 'By Resource' },
+            { id: 'spaces', label: 'By Application' },
             { id: 'inspect', label: 'Inspect Permissions' },
           ] as { id: Tab; label: string }[]).map((tab) => (
             <button
@@ -269,6 +272,18 @@ export function AccessMatrixPage() {
             className="h-9 w-full rounded-md border bg-background pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
+        {allApps.length > 1 && (
+          <select
+            value={selectedApp}
+            onChange={(e) => setSelectedApp(e.target.value)}
+            className="h-9 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">All applications</option>
+            {allApps.map((app) => (
+              <option key={app} value={app}>{app}</option>
+            ))}
+          </select>
+        )}
         {(activeTab === 'spaces' || allResources.length > 1) && (
           <select
             value={selectedResource}
