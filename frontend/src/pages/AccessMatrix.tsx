@@ -310,9 +310,21 @@ export function AccessMatrixPage() {
                   return (
                     <tr key={principal} className="hover:bg-muted/30">
                       <td className="px-4 py-2 sticky left-0 bg-card">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 group relative">
                           <Shield className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm font-medium text-foreground">{principal}</span>
+                          <span className="text-sm font-medium text-foreground cursor-default">{principal}</span>
+                          {activeTab === 'users' && (() => {
+                            const userInfo = allUsers.find(u => u.username === principal);
+                            if (userInfo && (userInfo.displayName || userInfo.email)) {
+                              return (
+                                <div className="absolute left-0 top-full z-10 mt-1 hidden group-hover:block rounded-md border bg-popover p-2 shadow-md text-xs min-w-[180px]">
+                                  {userInfo.displayName && <p className="font-medium text-foreground">{userInfo.displayName}</p>}
+                                  {userInfo.email && <p className="text-muted-foreground">{userInfo.email}</p>}
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                       </td>
                       {allPermissions.map((perm) => {
