@@ -716,6 +716,32 @@ class ConnectorSyncController(
             }
         }
 
+        // === Phase 2.5: Sync group members ===
+        var membersLinked = 0
+        opGroups.forEach { opGroup ->
+            try {
+                val group = groupService.findByName(opGroup.name) ?: return@forEach
+                val memberIds = client.getGroupMembers(opGroup.id)
+                val existingMembers = groupService.getMembers(group.id!!)
+
+                memberIds.forEach { opUserId ->
+                    // Find the user in OpenCrowd by their externalId
+                    val externalId = "openproject:$opUserId"
+                    val user = userService.findAll(org.springframework.data.domain.PageRequest.of(0, 200)).content
+                        .find { it.externalId == externalId }
+
+                    if (user != null && user.id!! !in existingMembers) {
+                        try {
+                            groupService.addMember(group.id!!, user.id!!)
+                            membersLinked++
+                        } catch (_: Exception) {}
+                    }
+                }
+            } catch (e: Exception) {
+                logger.warn("[Resync:OP] Group member sync error for ${opGroup.name}: ${e.message}")
+            }
+        }
+
         // === Phase 3: Import project memberships as permissions ===
         val memberships = client.getMemberships()
         var permissionsCreated = 0
@@ -750,7 +776,7 @@ class ConnectorSyncController(
         // Update last sync
         connectorService.update(dbConnector.id!!) { c -> c.lastSyncAt = java.time.Instant.now(); c }
 
-        logger.info("[Resync:OP] Complete: users(+$usersCreated, ~$usersUpdated), groups(+$groupsCreated), permissions(+$permissionsCreated)")
+        logger.info("[Resync:OP] Complete: users(+$usersCreated, ~$usersUpdated), groups(+$groupsCreated), members(+$membersLinked), permissions(+$permissionsCreated)")
 
         // Publish audit event
         eventPublisher.publish(
@@ -772,7 +798,7 @@ class ConnectorSyncController(
             "success" to true,
             "users" to mapOf("total" to opUsers.size, "created" to usersCreated, "updated" to usersUpdated, "errors" to usersErrors, "createdNames" to createdUsernames),
             "groups" to mapOf("total" to opGroups.size, "created" to groupsCreated, "createdNames" to createdGroupnames),
-            "memberships" to mapOf("linked" to permissionsCreated, "total" to memberships.size),
+            "memberships" to mapOf("linked" to permissionsCreated, "total" to memberships.size, "groupMembers" to membersLinked),
         ))
     }
 
