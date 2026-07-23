@@ -265,6 +265,7 @@ class OpenProjectClient(
 
     /**
      * Add a user to a project with a specific role.
+     * If user already has a membership, updates it to add the new role.
      */
     fun addMembership(projectId: Int, userId: Int, roleId: Int): Boolean {
         return try {
@@ -282,10 +283,54 @@ class OpenProjectClient(
             if (response.statusCode() in 200..299) {
                 logger.info("Added membership: user $userId → project $projectId (role $roleId)")
                 true
+            } else if (response.statusCode() == 422 && response.body().contains("already been taken")) {
+                // User already has a membership — update it to add this role
+                logger.info("User $userId already in project $projectId — updating to add role $roleId")
+                updateMembershipAddRole(projectId, userId, roleId)
             } else {
                 logger.error("Failed to add membership: HTTP ${response.statusCode()} - ${response.body().take(200)}")
                 false
             }
+        } catch (e: Exception) {
+            logger.error("Failed to add membership: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Update an existing membership to add a new role.
+     */
+    fun updateMembershipAddRole(projectId: Int, userId: Int, newRoleId: Int): Boolean {
+        return try {
+            // Find the existing membership
+            val memberships = getMemberships(projectId)
+            val existing = memberships.find { it.principalId == userId }
+                ?: return false
+
+            // Build roles array including existing + new
+            val existingRoleHrefs = existing.roles.mapNotNull { roleName ->
+                val roles = getRoles()
+                roles.find { it.name == roleName }?.let { "/api/v3/roles/${it.id}" }
+            }.toMutableList()
+            existingRoleHrefs.add("/api/v3/roles/$newRoleId")
+            val uniqueRoles = existingRoleHrefs.distinct()
+
+            val rolesJson = uniqueRoles.joinToString(",") { """{ "href": "$it" }""" }
+            val jsonBody = """{ "_links": { "roles": [$rolesJson] } }"""
+
+            val response = patch("/api/v3/memberships/${existing.id}", jsonBody)
+            if (response.statusCode() in 200..299) {
+                logger.info("Updated membership ${existing.id}: added role $newRoleId")
+                true
+            } else {
+                logger.error("Failed to update membership: HTTP ${response.statusCode()} - ${response.body().take(200)}")
+                false
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to update membership: ${e.message}")
+            false
+        }
+    }
         } catch (e: Exception) {
             logger.error("Failed to add membership: ${e.message}")
             false
@@ -359,6 +404,20 @@ class OpenProjectClient(
             .header("Accept", "application/json")
             .timeout(Duration.ofSeconds(30))
             .DELETE()
+            .build()
+
+        return httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+    }
+
+    private fun patch(path: String, jsonBody: String): HttpResponse<String> {
+        val url = if (path.startsWith("http")) path else "$baseUrl$path"
+        val request = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("Authorization", authHeader)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .timeout(Duration.ofSeconds(30))
+            .method("PATCH", HttpRequest.BodyPublishers.ofString(jsonBody))
             .build()
 
         return httpClient.send(request, HttpResponse.BodyHandlers.ofString())
