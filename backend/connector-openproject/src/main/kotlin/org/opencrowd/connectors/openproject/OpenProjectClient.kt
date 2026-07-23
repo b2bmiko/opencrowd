@@ -36,8 +36,15 @@ class OpenProjectClient(
      */
     fun testConnection(): Boolean {
         return try {
+            // Try root endpoint first
             val response = get("/api/v3")
-            response.statusCode() == 200
+            logger.info("OpenProject testConnection /api/v3: status=${response.statusCode()}")
+            if (response.statusCode() == 200) return true
+
+            // Some OP instances require auth even for root — try users endpoint
+            val usersResponse = get("/api/v3/users?pageSize=1")
+            logger.info("OpenProject testConnection /api/v3/users: status=${usersResponse.statusCode()}")
+            usersResponse.statusCode() == 200
         } catch (e: Exception) {
             logger.error("OpenProject connection test failed: ${e.message}")
             false
